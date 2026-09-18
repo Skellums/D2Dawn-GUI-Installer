@@ -1,7 +1,7 @@
 # Dawn GUI Installer & Depot Downloader
 
 <p align="center">
-  <img src="dawn-logo.png" alt="Dawn Logo" width="128" height="128">
+  <img src="assets/dawndownload-logo.png" alt="Dawn Logo" width="128" height="128">
 </p>
 
 <p align="center">
