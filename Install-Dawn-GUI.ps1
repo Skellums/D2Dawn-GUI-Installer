@@ -1501,9 +1501,10 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
     Log-Message "Arguments: $($ScriptArguments -join ' ')"
     Log-Message "=========================================================="
 
-    $tempLog = [System.IO.Path]::GetTempFileName()
+    $script:InstallOpTitle = $OperationTitle
+    $script:InstallTempLog = [System.IO.Path]::GetTempFileName()
     $fullArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script:InstallerScriptPath`"") + $ScriptArguments
-    $cmdArg = "/c powershell.exe $($fullArgs -join ' ') > `"$tempLog`" 2>&1"
+    $cmdArg = "/c powershell.exe $($fullArgs -join ' ') > `"$script:InstallTempLog`" 2>&1"
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'cmd.exe'
@@ -1512,7 +1513,7 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
     $psi.UseShellExecute = $false
 
     try {
-        $proc = [System.Diagnostics.Process]::Start($psi)
+        $script:InstallProc = [System.Diagnostics.Process]::Start($psi)
     } catch {
         Log-Message "[ERROR] Failed to start installer process: $($_.Exception.Message)"
         $script:IsRunningInstaller = $false
@@ -1521,16 +1522,22 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
         return
     }
 
-    $stream = [System.IO.File]::Open($tempLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-    $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+    $script:InstallStream = [System.IO.File]::Open($script:InstallTempLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    $script:InstallReader = New-Object System.IO.StreamReader($script:InstallStream, [System.Text.Encoding]::UTF8)
 
-    $timer = New-Object System.Windows.Threading.DispatcherTimer
-    $timer.Interval = [TimeSpan]::FromMilliseconds(60)
+    $installTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $installTimer.Interval = [TimeSpan]::FromMilliseconds(60)
 
-    $timer.add_Tick({
+    $installTimer.add_Tick({
+        param($sender, $e)
         try {
-            while (-not $reader.EndOfStream) {
-                $line = $reader.ReadLine()
+            if (-not $script:InstallReader) {
+                $sender.Stop()
+                return
+            }
+
+            while (-not $script:InstallReader.EndOfStream) {
+                $line = $script:InstallReader.ReadLine()
                 if ($null -ne $line) {
                     Log-Message $line
                     if ($line -like 'Release:*') {
@@ -1551,19 +1558,25 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
                 }
             }
 
-            if ($proc.HasExited) {
-                while (-not $reader.EndOfStream) {
-                    $line = $reader.ReadLine()
+            if ($script:InstallProc -and $script:InstallProc.HasExited) {
+                $sender.Stop()
+
+                while (-not $script:InstallReader.EndOfStream) {
+                    $line = $script:InstallReader.ReadLine()
                     if ($null -ne $line) { Log-Message $line }
                 }
 
-                $reader.Dispose()
-                $stream.Dispose()
-                Remove-Item -LiteralPath $tempLog -Force -ErrorAction SilentlyContinue
-                $timer.Stop()
+                $script:InstallReader.Dispose()
+                $script:InstallReader = $null
+                $script:InstallStream.Dispose()
+                $script:InstallStream = $null
+                if (Test-Path -LiteralPath $script:InstallTempLog) {
+                    Remove-Item -LiteralPath $script:InstallTempLog -Force -ErrorAction SilentlyContinue
+                }
 
-                $exitCode = $proc.ExitCode
-                $proc.Dispose()
+                $exitCode = $script:InstallProc.ExitCode
+                $script:InstallProc.Dispose()
+                $script:InstallProc = $null
 
                 $script:IsRunningInstaller = $false
                 $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
@@ -1572,28 +1585,37 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
                 $btnAutoDetect.IsEnabled = $true
                 $btnStartDownload.IsEnabled = $true
 
+                $opTitle = $script:InstallOpTitle
                 if ($exitCode -eq 0) {
                     Log-Message "=========================================================="
-                    Log-Message "[$(Get-Date -Format 'HH:mm:ss')] $OperationTitle completed successfully (Exit Code 0)."
+                    Log-Message "[$(Get-Date -Format 'HH:mm:ss')] $opTitle completed successfully (Exit Code 0)."
                     Log-Message "=========================================================="
-                    Set-StatusText "$OperationTitle completed successfully."
-                    [System.Windows.MessageBox]::Show("$OperationTitle completed successfully!", "Dawn Installer", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+                    Set-StatusText "$opTitle completed successfully."
+                    [System.Windows.MessageBox]::Show("$opTitle completed successfully!", "Dawn Installer", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
                 } else {
                     Log-Message "=========================================================="
-                    Log-Message "[$(Get-Date -Format 'HH:mm:ss')] $OperationTitle encountered errors (Exit Code $exitCode)."
+                    Log-Message "[$(Get-Date -Format 'HH:mm:ss')] $opTitle encountered errors (Exit Code $exitCode)."
                     Log-Message "=========================================================="
-                    Set-StatusText "$OperationTitle failed. Check logs for details."
-                    [System.Windows.MessageBox]::Show("$OperationTitle did not complete. Please inspect the Console Logs tab for details.", "Dawn Installer Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+                    Set-StatusText "$opTitle failed. Check logs for details."
+                    [System.Windows.MessageBox]::Show("$opTitle did not complete. Please inspect the Console Logs tab for details.", "Dawn Installer Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
                 }
 
                 Update-GameValidation
             }
         } catch {
-            Log-Message "[ERROR in watcher]: $($_.Exception.Message)"
+            $sender.Stop()
+            Log-Message "[ERROR in installer watcher]: $($_.Exception.Message)"
+            $script:IsRunningInstaller = $false
+            $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
+            $txtGameRoot.IsEnabled = $true
+            $btnBrowse.IsEnabled = $true
+            $btnAutoDetect.IsEnabled = $true
+            $btnStartDownload.IsEnabled = $true
+            Update-GameValidation
         }
     })
 
-    $timer.Start()
+    $installTimer.Start()
 }
 
 # --- Execution Engine for Steam Depot Downloader ---
@@ -1634,6 +1656,8 @@ function Start-SteamDownloadProcess {
         $argsList.Add("`"$username`"")
     }
 
+    $script:DlTargetDir = $targetDir
+
     if ($chkDownloadConsole.IsChecked) {
         $scriptArgString = ($argsList -join ' ')
         $cmdLine = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$script:DownloadScriptPath`" $scriptArgString"
@@ -1644,7 +1668,7 @@ function Start-SteamDownloadProcess {
         $psi.UseShellExecute = $true
 
         try {
-            $dlProc = [System.Diagnostics.Process]::Start($psi)
+            $script:DlProc = [System.Diagnostics.Process]::Start($psi)
         } catch {
             [System.Windows.MessageBox]::Show("Failed to launch downloader window: $($_.Exception.Message)", "Download Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
             $script:IsRunningDownload = $false
@@ -1656,28 +1680,43 @@ function Start-SteamDownloadProcess {
         $watchTimer = New-Object System.Windows.Threading.DispatcherTimer
         $watchTimer.Interval = [TimeSpan]::FromSeconds(1)
         $watchTimer.add_Tick({
-            if ($dlProc.HasExited) {
-                $watchTimer.Stop()
-                $dlProc.Dispose()
+            param($sender, $e)
+            try {
+                if (-not $script:DlProc) {
+                    $sender.Stop()
+                    return
+                }
 
+                if ($script:DlProc.HasExited) {
+                    $sender.Stop()
+                    $script:DlProc.Dispose()
+                    $script:DlProc = $null
+
+                    $script:IsRunningDownload = $false
+                    $btnStartDownload.IsEnabled = $true
+                    $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
+                    Set-StatusText "Download finished."
+
+                    $exe = Join-Path $script:DlTargetDir 'destiny2.exe'
+                    if (Test-Path -LiteralPath $exe -PathType Leaf) {
+                        try {
+                            $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
+                            if ($ver -eq $script:ExpectedFileVersion) {
+                                $txtGameRoot.Text = $script:DlTargetDir
+                                $mainTabs.SelectedItem = $tabInstall
+                                Update-GameValidation
+                                [System.Windows.MessageBox]::Show("Destiny 2 build $ver has been successfully downloaded and verified!`nYou can now click 'Install Dawn' to complete the installation.", "Download Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+                                return
+                            }
+                        } catch {}
+                    }
+                    Update-GameValidation
+                }
+            } catch {
+                $sender.Stop()
                 $script:IsRunningDownload = $false
                 $btnStartDownload.IsEnabled = $true
                 $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
-                Set-StatusText "Download finished."
-
-                $exe = Join-Path $targetDir 'destiny2.exe'
-                if (Test-Path -LiteralPath $exe -PathType Leaf) {
-                    try {
-                        $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
-                        if ($ver -eq $script:ExpectedFileVersion) {
-                            $txtGameRoot.Text = $targetDir
-                            $mainTabs.SelectedItem = $tabInstall
-                            Update-GameValidation
-                            [System.Windows.MessageBox]::Show("Destiny 2 build $ver has been successfully downloaded and verified!`nYou can now click 'Install Dawn' to complete the installation.", "Download Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
-                            return
-                        }
-                    } catch {}
-                }
                 Update-GameValidation
             }
         })
@@ -1687,12 +1726,12 @@ function Start-SteamDownloadProcess {
         $mainTabs.SelectedItem = $tabConsole
         Log-Message "=========================================================="
         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Starting Steam Depot Downloader"
-        Log-Message "Destination: $targetDir"
+        Log-Message "Destination: $script:DlTargetDir"
         Log-Message "=========================================================="
 
-        $tempLog = [System.IO.Path]::GetTempFileName()
+        $script:DlTempLog = [System.IO.Path]::GetTempFileName()
         $fullArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script:DownloadScriptPath`"") + $argsList
-        $cmdArg = "/c powershell.exe $($fullArgs -join ' ') > `"$tempLog`" 2>&1"
+        $cmdArg = "/c powershell.exe $($fullArgs -join ' ') > `"$script:DlTempLog`" 2>&1"
 
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = 'cmd.exe'
@@ -1701,7 +1740,7 @@ function Start-SteamDownloadProcess {
         $psi.UseShellExecute = $false
 
         try {
-            $dlProc = [System.Diagnostics.Process]::Start($psi)
+            $script:DlProc = [System.Diagnostics.Process]::Start($psi)
         } catch {
             Log-Message "[ERROR] Failed to start downloader: $($_.Exception.Message)"
             $script:IsRunningDownload = $false
@@ -1710,16 +1749,22 @@ function Start-SteamDownloadProcess {
             return
         }
 
-        $stream = [System.IO.File]::Open($tempLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-        $dlReader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+        $script:DlStream = [System.IO.File]::Open($script:DlTempLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $script:DlReader = New-Object System.IO.StreamReader($script:DlStream, [System.Text.Encoding]::UTF8)
 
         $dlTimer = New-Object System.Windows.Threading.DispatcherTimer
         $dlTimer.Interval = [TimeSpan]::FromMilliseconds(80)
 
         $dlTimer.add_Tick({
+            param($sender, $e)
             try {
-                while (-not $dlReader.EndOfStream) {
-                    $line = $dlReader.ReadLine()
+                if (-not $script:DlReader) {
+                    $sender.Stop()
+                    return
+                }
+
+                while (-not $script:DlReader.EndOfStream) {
+                    $line = $script:DlReader.ReadLine()
                     if ($null -ne $line) {
                         Log-Message $line
                         if ($line -like '*Step 1/2*') {
@@ -1732,19 +1777,25 @@ function Start-SteamDownloadProcess {
                     }
                 }
 
-                if ($dlProc.HasExited) {
-                    while (-not $dlReader.EndOfStream) {
-                        $line = $dlReader.ReadLine()
+                if ($script:DlProc -and $script:DlProc.HasExited) {
+                    $sender.Stop()
+
+                    while (-not $script:DlReader.EndOfStream) {
+                        $line = $script:DlReader.ReadLine()
                         if ($null -ne $line) { Log-Message $line }
                     }
 
-                    $dlReader.Dispose()
-                    $stream.Dispose()
-                    Remove-Item -LiteralPath $tempLog -Force -ErrorAction SilentlyContinue
-                    $dlTimer.Stop()
+                    $script:DlReader.Dispose()
+                    $script:DlReader = $null
+                    $script:DlStream.Dispose()
+                    $script:DlStream = $null
+                    if (Test-Path -LiteralPath $script:DlTempLog) {
+                        Remove-Item -LiteralPath $script:DlTempLog -Force -ErrorAction SilentlyContinue
+                    }
 
-                    $exitCode = $dlProc.ExitCode
-                    $dlProc.Dispose()
+                    $exitCode = $script:DlProc.ExitCode
+                    $script:DlProc.Dispose()
+                    $script:DlProc = $null
 
                     $script:IsRunningDownload = $false
                     $btnStartDownload.IsEnabled = $true
@@ -1754,9 +1805,9 @@ function Start-SteamDownloadProcess {
                         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Download finished successfully."
                         Set-StatusText "Steam download completed."
 
-                        $exe = Join-Path $targetDir 'destiny2.exe'
+                        $exe = Join-Path $script:DlTargetDir 'destiny2.exe'
                         if (Test-Path -LiteralPath $exe -PathType Leaf) {
-                            $txtGameRoot.Text = $targetDir
+                            $txtGameRoot.Text = $script:DlTargetDir
                             $mainTabs.SelectedItem = $tabInstall
                             Update-GameValidation
                             [System.Windows.MessageBox]::Show("Destiny 2 build has been downloaded and verified!`nYou can now click 'Install Dawn'.", "Download Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
@@ -1770,7 +1821,12 @@ function Start-SteamDownloadProcess {
                     Update-GameValidation
                 }
             } catch {
+                $sender.Stop()
                 Log-Message "[ERROR in downloader watcher]: $($_.Exception.Message)"
+                $script:IsRunningDownload = $false
+                $btnStartDownload.IsEnabled = $true
+                $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
+                Update-GameValidation
             }
         })
 
@@ -1957,8 +2013,9 @@ $btnCopyLog.add_Click({
         $resetTimer = New-Object System.Windows.Threading.DispatcherTimer
         $resetTimer.Interval = [TimeSpan]::FromSeconds(1.5)
         $resetTimer.add_Tick({
+            param($sender, $e)
             $btnCopyLog.Content = "Copy Log"
-            $resetTimer.Stop()
+            $sender.Stop()
         })
         $resetTimer.Start()
     } catch {}
