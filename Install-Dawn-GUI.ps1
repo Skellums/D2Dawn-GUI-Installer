@@ -1568,7 +1568,72 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
 
     $script:InstallOpTitle = $OperationTitle
     $script:InstallTempLog = [System.IO.Path]::GetTempFileName()
-    $fullArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script:InstallerScriptPath`"") + $ScriptArguments
+    $script:InstallRunnerScript = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "dawn-run-$([guid]::NewGuid().ToString('N')).ps1")
+
+    # In Windows PowerShell 5.1, Get-FileHash triggers a ShouldProcess ProviderPath
+    # check under -WhatIf ($WhatIfPreference = $true) returning $null, which causes
+    # StrictMode PropertyNotFoundException when .Hash is accessed.
+    # We provide a transparent execution shim that defines Get-FileHash using native
+    # .NET cryptography before invoking Install-Dawn.ps1, keeping the upstream package 100% clean.
+    $escapedTarget = $script:InstallerScriptPath.Replace("'", "''")
+    $runnerContent = @"
+function global:Get-FileHash {
+    [CmdletBinding(DefaultParameterSetName = 'Path')]
+    param(
+        [Parameter(Mandatory = `$true, Position = 0, ParameterSetName = 'Path', ValueFromPipeline = `$true, ValueFromPipelineByPropertyName = `$true)]
+        [string[]]`$Path,
+
+        [Parameter(Mandatory = `$true, ParameterSetName = 'LiteralPath', ValueFromPipelineByPropertyName = `$true)]
+        [Alias('PSPath')]
+        [string[]]`$LiteralPath,
+
+        [Parameter(Position = 1)]
+        [ValidateSet('SHA1', 'SHA256', 'SHA384', 'SHA512', 'MD5')]
+        [string]`$Algorithm = 'SHA256'
+    )
+    process {
+        `$pathsToProcess = if (`$PSCmdlet.ParameterSetName -eq 'LiteralPath') { `$LiteralPath } else { `$Path }
+        foreach (`$p in `$pathsToProcess) {
+            `$resolvedPath = `$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(`$p)
+            if (-not [System.IO.File]::Exists(`$resolvedPath)) {
+                Write-Error "Cannot find file: `$resolvedPath"
+                continue
+            }
+            `$hasher = switch (`$Algorithm.ToUpperInvariant()) {
+                'SHA1'   { [System.Security.Cryptography.SHA1]::Create() }
+                'SHA256' { [System.Security.Cryptography.SHA256]::Create() }
+                'SHA384' { [System.Security.Cryptography.SHA384]::Create() }
+                'SHA512' { [System.Security.Cryptography.SHA512]::Create() }
+                'MD5'    { [System.Security.Cryptography.MD5]::Create() }
+                default  { [System.Security.Cryptography.SHA256]::Create() }
+            }
+            `$stream = [System.IO.File]::Open(`$resolvedPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            try {
+                `$hashBytes = `$hasher.ComputeHash(`$stream)
+                `$hashString = [System.BitConverter]::ToString(`$hashBytes).Replace('-', '')
+                [pscustomobject]@{
+                    Algorithm = `$Algorithm.ToUpperInvariant()
+                    Hash      = `$hashString
+                    Path      = `$resolvedPath
+                }
+            } finally {
+                `$stream.Dispose()
+                `$hasher.Dispose()
+            }
+        }
+    }
+}
+
+& '$escapedTarget' @args
+if (`$LASTEXITCODE -ne `$null -and `$LASTEXITCODE -ne 0) {
+    exit `$LASTEXITCODE
+}
+if (-not `$?) {
+    exit 1
+}
+"@
+    [System.IO.File]::WriteAllText($script:InstallRunnerScript, $runnerContent, [System.Text.Encoding]::ASCII)
+    $fullArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$script:InstallRunnerScript`"") + $ScriptArguments
     $cmdArg = "/c powershell.exe $($fullArgs -join ' ') > `"$script:InstallTempLog`" 2>&1"
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -1581,6 +1646,10 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
         $script:InstallProc = [System.Diagnostics.Process]::Start($psi)
     } catch {
         Log-Message "[ERROR] Failed to start installer process: $($_.Exception.Message)"
+        if ($script:InstallRunnerScript -and (Test-Path -LiteralPath $script:InstallRunnerScript)) {
+            Remove-Item -LiteralPath $script:InstallRunnerScript -Force -ErrorAction SilentlyContinue
+            $script:InstallRunnerScript = $null
+        }
         $script:IsRunningInstaller = $false
         $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
         Update-GameValidation
@@ -1638,6 +1707,10 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
                 if (Test-Path -LiteralPath $script:InstallTempLog) {
                     Remove-Item -LiteralPath $script:InstallTempLog -Force -ErrorAction SilentlyContinue
                 }
+                if ($script:InstallRunnerScript -and (Test-Path -LiteralPath $script:InstallRunnerScript)) {
+                    Remove-Item -LiteralPath $script:InstallRunnerScript -Force -ErrorAction SilentlyContinue
+                    $script:InstallRunnerScript = $null
+                }
 
                 $exitCode = $script:InstallProc.ExitCode
                 $script:InstallProc.Dispose()
@@ -1670,6 +1743,10 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
         } catch {
             $sender.Stop()
             Log-Message "[ERROR in installer watcher]: $($_.Exception.Message)"
+            if ($script:InstallRunnerScript -and (Test-Path -LiteralPath $script:InstallRunnerScript)) {
+                Remove-Item -LiteralPath $script:InstallRunnerScript -Force -ErrorAction SilentlyContinue
+                $script:InstallRunnerScript = $null
+            }
             $script:IsRunningInstaller = $false
             $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
             $txtGameRoot.IsEnabled = $true
@@ -2481,6 +2558,9 @@ $window.add_Closing({
         }
     }
     $procTimer.Stop()
+    if ($script:InstallRunnerScript -and (Test-Path -LiteralPath $script:InstallRunnerScript)) {
+        Remove-Item -LiteralPath $script:InstallRunnerScript -Force -ErrorAction SilentlyContinue
+    }
 })
 
 # Show Dialog
