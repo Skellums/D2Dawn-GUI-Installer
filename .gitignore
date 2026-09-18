@@ -11,6 +11,7 @@ tools/
 *.zip
 
 # Runtime & backup data
+dist/
 .dawn/
 *.log
 .vs/
