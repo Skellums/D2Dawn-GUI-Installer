@@ -366,6 +366,28 @@ $xaml = @'
                             </Grid>
                         </Border>
 
+                        <!-- MISSING DAWN RELEASE BANNER -->
+                        <Border Name="BannerMissingDawn" Visibility="Collapsed" Background="#2E1B10" BorderBrush="#F59E0B" BorderThickness="1.5" CornerRadius="6" Padding="16,14" Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#x26A0; Dawn Release Package Required" FontWeight="Bold" FontSize="14" Foreground="#F59E0B"/>
+                                        <Border Background="#451A03" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Action Required" FontSize="11" FontWeight="Bold" Foreground="#FCD34D"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Name="TxtMissingDawnDetails" Text="Dawn payload files (Install-Dawn.ps1 and release.json) were not found in this folder. Click 'Download Dawn Release' to automatically download and unpack the latest release from GitHub." FontSize="12" Foreground="#FEF3C7" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                    <Button Name="BtnForceDownloadDawn" Style="{StaticResource PrimaryBtn}" Content="&#x2B07; Download Dawn Release" Height="36" Padding="14,6"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                         <!-- UPSTREAM RELEASE UPDATE ALERT -->
                         <Border Name="BannerUpdateAvailable" Visibility="Collapsed" Background="#13202E" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,14">
                             <Grid>
@@ -804,6 +826,9 @@ $procStatusDot            = $window.FindName('ProcStatusDot')
 $procStatusText           = $window.FindName('ProcStatusText')
 
 # Control References - Updates
+$bannerMissingDawn         = $window.FindName('BannerMissingDawn')
+$txtMissingDawnDetails     = $window.FindName('TxtMissingDawnDetails')
+$btnForceDownloadDawn      = $window.FindName('BtnForceDownloadDawn')
 $bannerUpdateAvailable     = $window.FindName('BannerUpdateAvailable')
 $txtUpdateVersionTag       = $window.FindName('TxtUpdateVersionTag')
 $txtUpdateReleaseDetails   = $window.FindName('TxtUpdateReleaseDetails')
@@ -875,19 +900,31 @@ $script:DawnReleasesApi        = 'https://api.github.com/repos/isinternets/Dawn/
 $script:DawnRepoUrl            = 'https://github.com/isinternets/Dawn'
 $script:LatestRelease          = $null
 $script:IsCheckingUpdates      = $false
+$script:UpdateRunspace         = $null
+$script:UpdateAsyncResult      = $null
+$script:UpdateIsInteractive    = $false
+$script:UpdateAutoPrompt       = $false
+$script:ApplyRunspace          = $null
+$script:ApplyAsyncResult       = $null
+$script:ApplyTempZip           = $null
+$script:ApplyTargetTag         = $null
 
 # --- Helper Functions ---
 function Load-ReleaseManifest {
     try {
         if (-not (Test-Path -LiteralPath $script:ReleaseManifestPath)) {
-            $lblReleaseVer.Text = "Missing release.json"
-            $headerReleaseBadge.Text = "Unknown"
+            $lblReleaseVer.Text = "Not Found (Download Required)"
+            $lblReleaseVer.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 245, 158, 11))
+            $headerReleaseBadge.Text = "Missing"
+            $lblTargetBuild.Text = "86657 (Destiny 2)"
+            $lblPayloadCount.Text = "0 items (Release not downloaded)"
             return
         }
         $manifest = Get-Content -LiteralPath $script:ReleaseManifestPath -Raw | ConvertFrom-Json
         $script:CurrentManifest = $manifest
         $headerReleaseBadge.Text = "v$($manifest.release)"
         $lblReleaseVer.Text = "$($manifest.release)"
+        $lblReleaseVer.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 241, 245, 249))
         $lblTargetBuild.Text = "$($manifest.gameBuild) (Destiny 2)"
         $lblPayloadCount.Text = "$(@($manifest.files).Count) verified payload files"
     } catch {
@@ -929,9 +966,11 @@ function Compare-DawnVersions([string] $LocalVer, [string] $RemoteVer) {
     return 0
 }
 
-function Check-DawnUpdates([switch] $Interactive) {
+function Check-DawnUpdates([switch] $Interactive, [switch] $AutoPromptDownload) {
     if ($script:IsCheckingUpdates) { return }
     $script:IsCheckingUpdates = $true
+    $script:UpdateIsInteractive = [bool]$Interactive
+    $script:UpdateAutoPrompt = [bool]$AutoPromptDownload
     
     if ($btnCheckUpdates) { $btnCheckUpdates.IsEnabled = $false }
     if ($btnCheckUpdatesInline) { $btnCheckUpdatesInline.IsEnabled = $false }
@@ -939,7 +978,7 @@ function Check-DawnUpdates([switch] $Interactive) {
     Set-StatusText "Checking for Dawn upstream releases on GitHub..."
     if ($Interactive) { Log-Message "[Check Updates] Querying $script:DawnReleasesApi..." }
     
-    $runspace = [powershell]::Create().AddScript({
+    $script:UpdateRunspace = [powershell]::Create().AddScript({
         param($apiUrl)
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         try {
@@ -951,22 +990,25 @@ function Check-DawnUpdates([switch] $Interactive) {
         }
     }).AddParameter('apiUrl', $script:DawnReleasesApi)
     
-    $asyncResult = $runspace.BeginInvoke()
+    $script:UpdateAsyncResult = $script:UpdateRunspace.BeginInvoke()
     
     $checkTimer = New-Object System.Windows.Threading.DispatcherTimer
     $checkTimer.Interval = [TimeSpan]::FromMilliseconds(150)
     $checkTimer.add_Tick({
-        if (-not $asyncResult.IsCompleted) { return }
-        $checkTimer.Stop()
+        param($sender, $e)
+        if (-not $script:UpdateAsyncResult -or -not $script:UpdateAsyncResult.IsCompleted) { return }
+        $sender.Stop()
         
         try {
-            $output = $runspace.EndInvoke($asyncResult)
-            $runspace.Dispose()
+            $output = $script:UpdateRunspace.EndInvoke($script:UpdateAsyncResult)
+            $script:UpdateRunspace.Dispose()
+            $script:UpdateRunspace = $null
+            $script:UpdateAsyncResult = $null
             $res = $output[0]
             
             if (-not $res.Success) {
                 Set-StatusText "Could not connect to GitHub to check for updates."
-                if ($Interactive) {
+                if ($script:UpdateIsInteractive) {
                     Log-Message "[Check Updates] Failed: $($res.Error)"
                     [System.Windows.MessageBox]::Show("Could not check for Dawn updates:`n$($res.Error)`n`nPlease check your internet connection or visit https://github.com/isinternets/Dawn directly.", "Update Check", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
                 }
@@ -984,40 +1026,49 @@ function Check-DawnUpdates([switch] $Interactive) {
             $latestTag = $latest.tag_name
             $latestClean = $latestTag -replace '^[vV]', ''
             $currentVer = if ($script:CurrentManifest) { $script:CurrentManifest.release } else { $null }
-            $installerPresent = Test-Path -LiteralPath $script:InstallerScriptPath
+            $installerPresent = (Test-Path -LiteralPath $script:InstallerScriptPath) -and (Test-Path -LiteralPath $script:ReleaseManifestPath)
             
             $cmp = Compare-DawnVersions $currentVer $latestClean
+            $relName = if ($latest.name) { $latest.name } else { $latestTag }
+            $pubDate = if ($latest.published_at) { (Get-Date $latest.published_at).ToString('yyyy-MM-dd') } else { '' }
             
-            if ($cmp -lt 0) {
+            if (-not $installerPresent) {
+                $bannerMissingDawn.Visibility = [System.Windows.Visibility]::Visible
+                $txtMissingDawnDetails.Text = "Dawn release files are missing in this folder. Latest release on GitHub is $latestTag ($relName, $pubDate). Click 'Download Dawn Release' to automatically download and set up Dawn in this folder."
+                $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+                
+                Set-StatusText "Dawn release missing. Latest on GitHub: $latestTag"
+                Log-Message "[Dawn Missing] Latest available Dawn release is $latestTag ($relName)."
+                
+                if ($script:UpdateAutoPrompt -or $script:UpdateIsInteractive) {
+                    $ask = [System.Windows.MessageBox]::Show("The Dawn release package (Install-Dawn.ps1 and release.json) was not found in this folder!`n`nWould you like to download Dawn $latestTag ($relName) from GitHub now?", "Dawn Package Required", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+                    if ($ask -eq [System.Windows.MessageBoxResult]::Yes) {
+                        Apply-DawnUpdate
+                    }
+                }
+            } elseif ($cmp -lt 0) {
+                $bannerMissingDawn.Visibility = [System.Windows.Visibility]::Collapsed
                 $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible
                 $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Visible
                 $headerUpdateBadgeText.Text = "Update: $latestTag"
                 $txtUpdateVersionTag.Text = $latestTag
-                
-                $relName = if ($latest.name) { $latest.name } else { $latestTag }
-                $pubDate = if ($latest.published_at) { (Get-Date $latest.published_at).ToString('yyyy-MM-dd') } else { '' }
-                
-                if (-not $installerPresent -or -not $script:CurrentManifest) {
-                    $txtUpdateReleaseDetails.Text = "Dawn release package not found in this folder. Latest release on GitHub is $latestTag ($relName, $pubDate). Click 'Update In-Place' to download and set up Dawn in this folder."
-                    $btnUpdateApply.Content = "Download Dawn"
-                } else {
-                    $txtUpdateReleaseDetails.Text = "Newer Dawn release found: $relName (Published: $pubDate). You currently have v$currentVer. Click 'Update In-Place' to update your local files, or save the release ZIP."
-                    $btnUpdateApply.Content = "Update In-Place"
-                }
+                $txtUpdateReleaseDetails.Text = "Newer Dawn release found: $relName (Published: $pubDate). You currently have v$currentVer. Click 'Update In-Place' to update your local files, or save the release ZIP."
+                $btnUpdateApply.Content = "Update In-Place"
                 
                 Set-StatusText "Dawn update available: $latestTag"
                 Log-Message "[Check Updates] Newer Dawn release available: $latestTag ($relName)"
                 
-                if ($Interactive) {
+                if ($script:UpdateIsInteractive) {
                     $mainTabs.SelectedItem = $tabInstall
                 }
             } else {
+                $bannerMissingDawn.Visibility = [System.Windows.Visibility]::Collapsed
                 $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
                 $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Collapsed
                 Set-StatusText "Dawn is up to date (v$currentVer)."
                 Log-Message "[Check Updates] Dawn is up to date (current: v$currentVer, latest: $latestTag)."
                 
-                if ($Interactive) {
+                if ($script:UpdateIsInteractive) {
                     [System.Windows.MessageBox]::Show("You are currently running the latest Dawn release: v$currentVer`n`nNo update is needed.", "Dawn is Up to Date", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
                 }
             }
@@ -1034,29 +1085,34 @@ function Check-DawnUpdates([switch] $Interactive) {
 }
 
 function Apply-DawnUpdate {
-    if (-not $script:LatestRelease) { return }
+    if (-not $script:LatestRelease) {
+        Check-DawnUpdates -Interactive
+        return
+    }
     $latest = $script:LatestRelease
     $tag = $latest.tag_name
+    $script:ApplyTargetTag = $tag
     
     $zipAsset = $latest.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*.sha256" } | Select-Object -First 1
     if (-not $zipAsset) {
-        [System.Windows.MessageBox]::Show("The latest release ($tag) does not have an attached ZIP archive asset.`nPlease visit the release page on GitHub to download manually.", "Update Notice", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+        [System.Windows.MessageBox]::Show("The release ($tag) does not have an attached ZIP archive asset.`nPlease visit the release page on GitHub to download manually.", "Update Notice", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
         if ($latest.html_url) { Start-Process $latest.html_url }
         return
     }
     
     $sizeMb = [math]::Round($zipAsset.size / 1MB, 2)
-    $confirm = [System.Windows.MessageBox]::Show("Download and apply Dawn $tag to this directory?`n`nDirectory: $script:ScriptDir`nFile: $($zipAsset.name) ($sizeMb MB)`n`nThis will update release.json, payload files, and Install-Dawn scripts to $tag.", "Confirm In-Place Update", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+    $confirm = [System.Windows.MessageBox]::Show("Download and set up Dawn $tag in this directory?`n`nDirectory: $script:ScriptDir`nFile: $($zipAsset.name) ($sizeMb MB)`n`nThis will extract release.json, payload files, and Install-Dawn scripts to $tag.", "Download Dawn Release", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
     if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
     
-    $btnUpdateApply.IsEnabled = $false
-    $btnUpdateDownloadZip.IsEnabled = $false
+    if ($btnUpdateApply) { $btnUpdateApply.IsEnabled = $false }
+    if ($btnForceDownloadDawn) { $btnForceDownloadDawn.IsEnabled = $false }
+    if ($btnInstall) { $btnInstall.IsEnabled = $false }
     Set-StatusText "Downloading Dawn $tag ($($zipAsset.name))..."
-    Log-Message "[Update] Downloading $($zipAsset.browser_download_url)..."
+    Log-Message "[Download Dawn] Downloading $($zipAsset.browser_download_url)..."
     
-    $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "Dawn_Update_$([System.Guid]::NewGuid().ToString('N')).zip"
+    $script:ApplyTempZip = Join-Path ([System.IO.Path]::GetTempPath()) "Dawn_Release_$([System.Guid]::NewGuid().ToString('N')).zip"
     
-    $runspace = [powershell]::Create().AddScript({
+    $script:ApplyRunspace = [powershell]::Create().AddScript({
         param($url, $outFile)
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         try {
@@ -1065,35 +1121,38 @@ function Apply-DawnUpdate {
         } catch {
             return @{ Success = $false; Error = $_.Exception.Message }
         }
-    }).AddParameter('url', $zipAsset.browser_download_url).AddParameter('outFile', $tempZip)
+    }).AddParameter('url', $zipAsset.browser_download_url).AddParameter('outFile', $script:ApplyTempZip)
     
-    $asyncResult = $runspace.BeginInvoke()
+    $script:ApplyAsyncResult = $script:ApplyRunspace.BeginInvoke()
     
     $extractTimer = New-Object System.Windows.Threading.DispatcherTimer
     $extractTimer.Interval = [TimeSpan]::FromMilliseconds(200)
     $extractTimer.add_Tick({
-        if (-not $asyncResult.IsCompleted) { return }
-        $extractTimer.Stop()
+        param($sender, $e)
+        if (-not $script:ApplyAsyncResult -or -not $script:ApplyAsyncResult.IsCompleted) { return }
+        $sender.Stop()
         
         try {
-            $output = $runspace.EndInvoke($asyncResult)
-            $runspace.Dispose()
+            $output = $script:ApplyRunspace.EndInvoke($script:ApplyAsyncResult)
+            $script:ApplyRunspace.Dispose()
+            $script:ApplyRunspace = $null
+            $script:ApplyAsyncResult = $null
             $res = $output[0]
             
             if (-not $res.Success) {
-                Set-StatusText "Update download failed."
-                Log-Message "[Update Error]: $($res.Error)"
-                [System.Windows.MessageBox]::Show("Failed to download update archive:`n$($res.Error)", "Download Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
-                $btnUpdateApply.IsEnabled = $true
-                $btnUpdateDownloadZip.IsEnabled = $true
+                Set-StatusText "Dawn download failed."
+                Log-Message "[Download Error]: $($res.Error)"
+                [System.Windows.MessageBox]::Show("Failed to download Dawn release package:`n$($res.Error)", "Download Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+                if ($btnUpdateApply) { $btnUpdateApply.IsEnabled = $true }
+                if ($btnForceDownloadDawn) { $btnForceDownloadDawn.IsEnabled = $true }
                 return
             }
             
-            Set-StatusText "Extracting Dawn $tag files..."
-            Log-Message "[Update] Extracting update files into $script:ScriptDir..."
+            Set-StatusText "Extracting Dawn $($script:ApplyTargetTag) files..."
+            Log-Message "[Download Dawn] Extracting release files into $script:ScriptDir..."
             
             Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
-            $archive = [System.IO.Compression.ZipFile]::OpenRead($tempZip)
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($script:ApplyTempZip)
             try {
                 foreach ($entry in $archive.Entries) {
                     if ([string]::IsNullOrEmpty($entry.Name)) {
@@ -1112,22 +1171,27 @@ function Apply-DawnUpdate {
                 }
             } finally {
                 $archive.Dispose()
-                Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $script:ApplyTempZip) {
+                    Remove-Item -LiteralPath $script:ApplyTempZip -Force -ErrorAction SilentlyContinue
+                }
             }
             
             Load-ReleaseManifest
+            $bannerMissingDawn.Visibility = [System.Windows.Visibility]::Collapsed
             $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
             $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Collapsed
-            Set-StatusText "Dawn successfully updated to $tag!"
-            Log-Message "[Update] Dawn release files successfully updated to $tag!"
+            Set-StatusText "Dawn $($script:ApplyTargetTag) downloaded and ready!"
+            Log-Message "[Download Dawn] Dawn release files successfully extracted and verified!"
             
-            [System.Windows.MessageBox]::Show("Dawn has been successfully updated to $tag!`n`nYou can now install it to your game folder.", "Update Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+            Update-GameValidation
+            
+            [System.Windows.MessageBox]::Show("Dawn $($script:ApplyTargetTag) has been successfully downloaded and set up in this directory!`n`nYou can now select your Destiny 2 folder and click 'Install Dawn'.", "Setup Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
         } catch {
-            Log-Message "[Update Extraction Error]: $($_.Exception.Message)"
-            [System.Windows.MessageBox]::Show("Error extracting update files:`n$($_.Exception.Message)", "Update Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+            Log-Message "[Extraction Error]: $($_.Exception.Message)"
+            [System.Windows.MessageBox]::Show("Error extracting Dawn release files:`n$($_.Exception.Message)", "Extraction Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
         } finally {
-            $btnUpdateApply.IsEnabled = $true
-            $btnUpdateDownloadZip.IsEnabled = $true
+            if ($btnUpdateApply) { $btnUpdateApply.IsEnabled = $true }
+            if ($btnForceDownloadDawn) { $btnForceDownloadDawn.IsEnabled = $true }
         }
     })
     $extractTimer.Start()
@@ -1396,8 +1460,15 @@ function Update-GameValidation {
 
     Update-BackupsList
 
-    $canInstall = ($script:IsGameValid -and -not $script:IsGameRunning -and -not $script:InterruptedBackupPath -and -not $script:IsRunningInstaller -and -not $script:IsRunningDownload)
-    $btnInstall.IsEnabled = $canInstall
+    $releasePresent = (Test-Path -LiteralPath $script:ReleaseManifestPath) -and (Test-Path -LiteralPath $script:InstallerScriptPath)
+    if (-not $releasePresent) {
+        $btnInstall.Content = "Download Dawn Release First"
+        $btnInstall.IsEnabled = $true
+    } else {
+        $btnInstall.Content = "Install Dawn"
+        $canInstall = ($script:IsGameValid -and -not $script:IsGameRunning -and -not $script:InterruptedBackupPath -and -not $script:IsRunningInstaller -and -not $script:IsRunningDownload)
+        $btnInstall.IsEnabled = $canInstall
+    }
     $btnLaunchGame.IsEnabled = ($script:IsGameValid -and -not $script:IsGameRunning -and -not $script:IsRunningInstaller -and -not $script:IsRunningDownload)
 
     $steamUser = if ($txtSteamUsername -and $txtSteamUsername.Text) { $txtSteamUsername.Text.Trim() } else { '' }
@@ -1751,6 +1822,15 @@ $btnGoToDownloadTab.add_Click({
 
 # Install Button
 $btnInstall.add_Click({
+    $releasePresent = (Test-Path -LiteralPath $script:ReleaseManifestPath) -and (Test-Path -LiteralPath $script:InstallerScriptPath)
+    if (-not $releasePresent) {
+        $res = [System.Windows.MessageBox]::Show("The Dawn release package (Install-Dawn.ps1 and release.json) is missing from this folder!`n`nWould you like to download Dawn from GitHub now?", "Dawn Package Required", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+        if ($res -eq [System.Windows.MessageBoxResult]::Yes) {
+            Apply-DawnUpdate
+        }
+        return
+    }
+
     if (-not $script:IsGameValid) { return }
 
     $gameRoot = $txtGameRoot.Text.Trim()
@@ -1923,6 +2003,9 @@ if ($btnUpdateViewRelease) {
 if ($btnOpenDawnRepo) {
     $btnOpenDawnRepo.add_Click({ Start-Process $script:DawnRepoUrl })
 }
+if ($btnForceDownloadDawn) {
+    $btnForceDownloadDawn.add_Click({ Apply-DawnUpdate })
+}
 if ($btnDismissUpdate) {
     $btnDismissUpdate.add_Click({
         $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
@@ -1984,8 +2067,14 @@ $window.add_Loaded({
         Log-Message "Installer Script: $script:InstallerScriptPath"
         Log-Message "Downloader Script: $script:DownloadScriptPath"
 
-        # Check for Dawn upstream updates in background (non-blocking)
-        Check-DawnUpdates
+        # Check for Dawn upstream releases (if missing, prompt download immediately)
+        $installerPresent = (Test-Path -LiteralPath $script:InstallerScriptPath) -and (Test-Path -LiteralPath $script:ReleaseManifestPath)
+        if (-not $installerPresent) {
+            $bannerMissingDawn.Visibility = [System.Windows.Visibility]::Visible
+            Check-DawnUpdates -AutoPromptDownload
+        } else {
+            Check-DawnUpdates
+        }
     } catch {
         try {
             Log-Message "[ERROR in startup]: $($_.Exception.Message)"
