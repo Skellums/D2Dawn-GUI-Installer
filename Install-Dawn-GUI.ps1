@@ -19,10 +19,11 @@ if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne [System.Thr
     }
 }
 
-# Resolve script directory reliably in all execution contexts
+# Resolve script directory reliably in all execution contexts (scripts, ISE, or compiled EXE)
 $script:ScriptDir = if ($PSScriptRoot) { $PSScriptRoot }
                     elseif ($PSCommandPath) { [System.IO.Path]::GetDirectoryName($PSCommandPath) }
                     elseif ($MyInvocation.MyCommand.Path) { [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path) }
+                    elseif ([System.AppDomain]::CurrentDomain.BaseDirectory) { [System.AppDomain]::CurrentDomain.BaseDirectory.TrimEnd('\', '/') }
                     else { (Get-Location).Path }
 
 # Load WPF and compression assemblies
@@ -31,6 +32,12 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 $script:ReleaseManifestPath  = Join-Path $script:ScriptDir 'release.json'
 $script:InstallerScriptPath  = Join-Path $script:ScriptDir 'Install-Dawn.ps1'
 $script:DownloadScriptPath   = Join-Path $script:ScriptDir 'Download-DestinyBuild.ps1'
+if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
+    $tempDl = Join-Path ([System.IO.Path]::GetTempPath()) 'Download-DestinyBuild.ps1'
+    if (Test-Path -LiteralPath $tempDl) {
+        $script:DownloadScriptPath = $tempDl
+    }
+}
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'

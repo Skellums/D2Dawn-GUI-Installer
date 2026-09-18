@@ -78,18 +78,19 @@ Comprehensive built-in reference manual detailing depot manifests, display prefe
 ## 🚀 Quick Start
 
 ### 1. Download the Installer
-Clone this repository or download the ZIP from GitHub:
+Download the standalone **`DawnInstaller.exe`** or the release ZIP from [GitHub Releases](https://github.com/Skellums/D2Dawn-GUI-Installer/releases):
 ```cmd
 git clone https://github.com/Skellums/D2Dawn-GUI-Installer.git
 ```
 
-### 2. Using with an Official Dawn Release
-1. Download and extract the latest Dawn release from [isinternets/Dawn Releases](https://github.com/isinternets/Dawn/releases).
-2. Copy the contents of this repository into your extracted Dawn folder (alongside `Install-Dawn.ps1` and `release.json`).
-3. Double-click **`Install-Dawn-GUI.cmd`** to open the visual installer.
+### 2. Launch the Installer
+- **Standalone Executable**: Double-click **`DawnInstaller.exe`** (no command prompt window, zero setup).
+- **Script Launcher**: Double-click **`Install-Dawn-GUI.cmd`**.
+
+If extracted inside a Dawn release folder, it immediately validates your game and payload. If launched standalone, it automatically detects missing Dawn releases and prompts to download the latest release from GitHub.
 
 ### 3. If You Need to Download Destiny 2 Build 86657
-1. Launch **`Install-Dawn-GUI.cmd`**.
+1. Launch **`DawnInstaller.exe`** (or **`Install-Dawn-GUI.cmd`**).
 2. Switch to the **Download Game Build** tab.
 3. Select your target directory (e.g. `C:\Games\Destiny 2`).
 4. Select **Steam Mobile App QR Code (Recommended)**.
@@ -135,6 +136,7 @@ If you prefer using the command line or scripting headless installations:
 | :--- | :--- |
 | `Install-Dawn-GUI.ps1` | Core WPF graphical user interface script |
 | `Install-Dawn-GUI.cmd` | Windows batch launcher for the GUI (`-STA` mode, hidden shell) |
+| `Build-Executable.ps1` | Compiles the standalone single-file `DawnInstaller.exe` |
 | `Download-DestinyBuild.ps1` | Standalone CLI script for Steam DepotDownloader |
 | `Download-DestinyBuild.cmd` | Windows batch runner for CLI depot downloading |
 | `README-Installer.txt` | Plain-text reference manual for offline viewing |

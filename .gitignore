@@ -3,6 +3,9 @@ payload/
 release.json
 Install-Dawn.ps1
 Install-Dawn.cmd
+Update-Dawn.ps1
+Update-Dawn.cmd
+RELEASE-NOTES.md
 READ-ME.txt
 
 # Tools & executables (DepotDownloader is automatically acquired if missing)
