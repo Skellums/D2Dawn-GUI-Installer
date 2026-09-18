@@ -20,3 +20,5 @@ package-release.ps1
 .vscode/
 Thumbs.db
 Desktop.ini
+dawn-gui_log.*
+*.pdn

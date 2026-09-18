@@ -152,7 +152,7 @@ $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Dawn Installer &amp; Steam Downloader - Destiny 2"
-        Height="730" Width="960" MinHeight="660" MinWidth="850"
+        Height="960" Width="1120" MinHeight="660" MinWidth="850"
         WindowStartupLocation="CenterScreen"
         Background="#12151B" Foreground="#E2E8F0"
         FontFamily="Segoe UI">
