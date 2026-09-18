@@ -31,6 +31,7 @@ Built entirely using native **Windows PowerShell 5.1** and **WPF (XAML)**, it re
 - **🔄 Backup & Rollback Manager**: Browse historical release restore points in `<game>/.dawn/release-backups`, inspect installed versions and dates, and restore any backup with one click.
 - **🚨 Transaction Recovery**: Detects interrupted installs using transaction journaling and prompts for instant one-click recovery.
 - **🧪 Simulation Mode (-WhatIf)**: Preview all file deployment actions safely before making any modifications.
+- **🔄 Upstream Release Checker & Auto-Updater**: Automatically queries GitHub for new releases from [isinternets/Dawn](https://github.com/isinternets/Dawn), compares against your local `release.json`, and offers one-click in-place update, direct ZIP download, or GitHub release viewing.
 - **🚀 One-Click Game Launcher**: Launch Destiny 2 directly from the installer interface.
 - **📋 Real-Time Console Streaming**: Live output feed with milestone indicators and one-click clipboard copying for easy troubleshooting.
 

@@ -63,6 +63,12 @@ GUI FEATURES
   * Preserves newly created progress since installation inside the backup's after-restore folder.
 - Interrupted Install Recovery: Detects incomplete or interrupted transactions and prompts you with
   a single-click recovery button.
+- Upstream Release Updates:
+  * Automatically queries GitHub (https://github.com/isinternets/Dawn) for newer Dawn releases.
+  * Displays release notification badge and banner with release notes and publish date.
+  * In-place update: Automatically downloads and updates release.json, payload files, and scripts.
+  * Save ZIP: Save the latest release archive to any location.
+  * One-click manual "Check Updates" button.
 - One-Click Game Launcher: Launch Destiny 2 directly from the installer once completed.
 - Log Tools: One-click "Copy Log" to clipboard for easy troubleshooting and support.
 

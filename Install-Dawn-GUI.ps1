@@ -26,7 +26,7 @@ $script:ScriptDir = if ($PSScriptRoot) { $PSScriptRoot }
                     else { (Get-Location).Path }
 
 # Load WPF and compression assemblies
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xml, System.IO.Compression.FileSystem
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xml, System.IO.Compression, System.IO.Compression.FileSystem
 
 $script:ReleaseManifestPath  = Join-Path $script:ScriptDir 'release.json'
 $script:InstallerScriptPath  = Join-Path $script:ScriptDir 'Install-Dawn.ps1'
@@ -328,12 +328,16 @@ $xaml = @'
                         <Border Background="#2C3442" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                             <TextBlock Name="HeaderReleaseBadge" Text="v..." FontSize="11" FontWeight="SemiBold" Foreground="#E5A93C"/>
                         </Border>
+                        <Border Name="HeaderUpdateBadge" Visibility="Collapsed" Background="#0C4A6E" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand" ToolTip="Click to view update details">
+                            <TextBlock Name="HeaderUpdateBadgeText" Text="Update Available" FontSize="11" FontWeight="Bold" Foreground="#38BDF8"/>
+                        </Border>
                     </StackPanel>
                     <TextBlock Text="Destiny 2 Build 86657 &#x2022; Release Deployer &amp; Steam Depot Downloader" FontSize="12" Foreground="#94A3B8" Margin="0,3,0,0"/>
                 </StackPanel>
 
-                <!-- Header Action: Launch Game -->
+                <!-- Header Action: Launch Game & Check Updates -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Name="BtnCheckUpdates" Style="{StaticResource StandardBtn}" Content="&#x21BA; Check Updates" ToolTip="Check for newer Dawn releases on GitHub" Margin="0,0,8,0"/>
                     <Button Name="BtnLaunchGame" Style="{StaticResource StandardBtn}" Content="&#x25B6; Launch Destiny 2" ToolTip="Launch destiny2.exe in selected game folder" Margin="0,0,0,0"/>
                 </StackPanel>
             </Grid>
@@ -359,6 +363,31 @@ $xaml = @'
                                     <TextBlock Name="AlertInterruptedText" Text="A previous installation was interrupted and must be recovered before proceeding." FontSize="12" Foreground="#FEE2E2" Margin="0,3,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                                 <Button Name="BtnRecoverInterrupted" Grid.Column="1" Style="{StaticResource DangerBtn}" Content="Recover / Rollback Now" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- UPSTREAM RELEASE UPDATE ALERT -->
+                        <Border Name="BannerUpdateAvailable" Visibility="Collapsed" Background="#13202E" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#x2191; Dawn Upstream Update Available" FontWeight="Bold" FontSize="13.5" Foreground="#38BDF8"/>
+                                        <Border Background="#0C4A6E" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Name="TxtUpdateVersionTag" Text="v..." FontSize="11" FontWeight="Bold" Foreground="#7DD3FC"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Name="TxtUpdateReleaseDetails" Text="A newer version of Dawn was found on GitHub." FontSize="12" Foreground="#BAE6FD" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <Button Name="BtnUpdateApply" Style="{StaticResource PrimaryBtn}" Content="&#x2B07; Update In-Place" Height="32" Padding="12,4" Margin="0,0,8,0"/>
+                                    <Button Name="BtnUpdateDownloadZip" Style="{StaticResource StandardBtn}" Content="Save ZIP..." Height="32" Padding="10,4" Margin="0,0,8,0"/>
+                                    <Button Name="BtnUpdateViewRelease" Style="{StaticResource StandardBtn}" Content="GitHub &#x2197;" Height="32" Padding="10,4" Margin="0,0,8,0"/>
+                                    <Button Name="BtnDismissUpdate" Style="{StaticResource StandardBtn}" Content="&#x2715;" ToolTip="Dismiss this notification" Width="28" Height="32" Padding="0"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
 
@@ -423,7 +452,10 @@ $xaml = @'
                                     </Grid.RowDefinitions>
 
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Dawn Release:" Foreground="#64748B" FontSize="12" Margin="0,0,0,6"/>
-                                    <TextBlock Name="LblReleaseVer" Grid.Row="0" Grid.Column="1" Text="..." Foreground="#F1F5F9" FontSize="12" FontWeight="SemiBold"/>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,6">
+                                        <TextBlock Name="LblReleaseVer" Text="..." Foreground="#F1F5F9" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Button Name="BtnCheckUpdatesInline" Style="{StaticResource StandardBtn}" Content="Check Updates" FontSize="10.5" Padding="8,1" Height="22" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
 
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Build:" Foreground="#64748B" FontSize="12" Margin="0,0,0,6"/>
                                     <TextBlock Name="LblTargetBuild" Grid.Row="1" Grid.Column="1" Text="86657 (Destiny 2)" Foreground="#F1F5F9" FontSize="12"/>
@@ -704,6 +736,18 @@ $xaml = @'
                                 <TextBlock Text="A persistent transactional journal tracks all replaced targets. If an installation is interrupted or cancelled, the journal ensures reliable recovery. Displaced files from a rollback are archived in the backup's after-restore directory so progress is never permanently lost." FontSize="12.5" Foreground="#CBD5E1" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
+
+                        <Border Background="#1A1F27" BorderBrush="#29313E" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,14,0,0">
+                            <StackPanel>
+                                <TextBlock Text="UPSTREAM DAWN RELEASES" FontSize="14" FontWeight="Bold" Foreground="#F8FAFC" Margin="0,0,0,8"/>
+                                <TextBlock Text="&#x2022; Dawn is actively maintained at https://github.com/isinternets/Dawn." FontSize="12.5" Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                <TextBlock Text="&#x2022; This GUI installer can automatically query GitHub for new releases and update your local installer payload in-place or download release archives directly." FontSize="12.5" Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Name="BtnCheckUpdatesGuide" Style="{StaticResource PrimaryBtn}" Content="&#x21BA; Check for Dawn Updates" Height="34" Padding="14,4" Margin="0,0,10,0"/>
+                                    <Button Name="BtnOpenDawnRepo" Style="{StaticResource StandardBtn}" Content="Visit Dawn on GitHub &#x2197;" Height="34" Padding="14,4"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -744,9 +788,12 @@ $window.Dispatcher.add_UnhandledException({
     $e.Handled = $true
 })
 
-# Control References - General
-$headerReleaseBadge       = $window.FindName('HeaderReleaseBadge')
-$btnLaunchGame            = $window.FindName('BtnLaunchGame')
+# Control References - General & Updates
+$headerReleaseBadge        = $window.FindName('HeaderReleaseBadge')
+$headerUpdateBadge         = $window.FindName('HeaderUpdateBadge')
+$headerUpdateBadgeText     = $window.FindName('HeaderUpdateBadgeText')
+$btnCheckUpdates           = $window.FindName('BtnCheckUpdates')
+$btnLaunchGame             = $window.FindName('BtnLaunchGame')
 $mainTabs                 = $window.FindName('MainTabs')
 $tabInstall               = $window.FindName('TabInstall')
 $tabDownload              = $window.FindName('TabDownload')
@@ -755,6 +802,18 @@ $tabConsole               = $window.FindName('TabConsole')
 $footerStatusText         = $window.FindName('FooterStatusText')
 $procStatusDot            = $window.FindName('ProcStatusDot')
 $procStatusText           = $window.FindName('ProcStatusText')
+
+# Control References - Updates
+$bannerUpdateAvailable     = $window.FindName('BannerUpdateAvailable')
+$txtUpdateVersionTag       = $window.FindName('TxtUpdateVersionTag')
+$txtUpdateReleaseDetails   = $window.FindName('TxtUpdateReleaseDetails')
+$btnUpdateApply            = $window.FindName('BtnUpdateApply')
+$btnUpdateDownloadZip      = $window.FindName('BtnUpdateDownloadZip')
+$btnUpdateViewRelease      = $window.FindName('BtnUpdateViewRelease')
+$btnDismissUpdate          = $window.FindName('BtnDismissUpdate')
+$btnCheckUpdatesInline     = $window.FindName('BtnCheckUpdatesInline')
+$btnCheckUpdatesGuide      = $window.FindName('BtnCheckUpdatesGuide')
+$btnOpenDawnRepo           = $window.FindName('BtnOpenDawnRepo')
 
 # Control References - Install Tab
 $alertInterruptedBox      = $window.FindName('AlertInterruptedBox')
@@ -812,6 +871,10 @@ $script:IsGameRunning          = $false
 $script:InterruptedBackupPath  = $null
 $script:IsRunningInstaller     = $false
 $script:IsRunningDownload      = $false
+$script:DawnReleasesApi        = 'https://api.github.com/repos/isinternets/Dawn/releases'
+$script:DawnRepoUrl            = 'https://github.com/isinternets/Dawn'
+$script:LatestRelease          = $null
+$script:IsCheckingUpdates      = $false
 
 # --- Helper Functions ---
 function Load-ReleaseManifest {
@@ -829,6 +892,282 @@ function Load-ReleaseManifest {
         $lblPayloadCount.Text = "$(@($manifest.files).Count) verified payload files"
     } catch {
         $lblReleaseVer.Text = "Error loading manifest: $($_.Exception.Message)"
+    }
+}
+
+# --- Upstream Dawn Releases & Update Checker ---
+function Parse-NormVersion([string] $v) {
+    if ([string]::IsNullOrWhiteSpace($v)) { return [version]'0.0.0' }
+    $clean = ($v -replace '^[vV]', '' -split '[-+]')[0]
+    $parts = @($clean -split '\.') | ForEach-Object {
+        $val = 0
+        [int]::TryParse(($_ -replace '\D', ''), [ref]$val) | Out-Null
+        $val
+    }
+    while ($parts.Count -lt 3) { $parts += 0 }
+    return [version]("$($parts[0]).$($parts[1]).$($parts[2])")
+}
+
+function Compare-DawnVersions([string] $LocalVer, [string] $RemoteVer) {
+    if ([string]::IsNullOrWhiteSpace($LocalVer)) { return -1 }
+    if ([string]::IsNullOrWhiteSpace($RemoteVer)) { return 1 }
+    
+    $v1 = Parse-NormVersion $LocalVer
+    $v2 = Parse-NormVersion $RemoteVer
+    
+    if ($v1 -lt $v2) { return -1 }
+    if ($v1 -gt $v2) { return 1 }
+    
+    $localHasPre = ($LocalVer -replace '^[vV]', '') -match '[-]'
+    $remoteHasPre = ($RemoteVer -replace '^[vV]', '') -match '[-]'
+    if ($localHasPre -and -not $remoteHasPre) { return -1 }
+    if (-not $localHasPre -and $remoteHasPre) { return 1 }
+    
+    $s1 = ($LocalVer -replace '^[vV]', '').Trim()
+    $s2 = ($RemoteVer -replace '^[vV]', '').Trim()
+    if ($s1 -ne $s2) { return -1 }
+    return 0
+}
+
+function Check-DawnUpdates([switch] $Interactive) {
+    if ($script:IsCheckingUpdates) { return }
+    $script:IsCheckingUpdates = $true
+    
+    if ($btnCheckUpdates) { $btnCheckUpdates.IsEnabled = $false }
+    if ($btnCheckUpdatesInline) { $btnCheckUpdatesInline.IsEnabled = $false }
+    if ($btnCheckUpdatesGuide) { $btnCheckUpdatesGuide.IsEnabled = $false }
+    Set-StatusText "Checking for Dawn upstream releases on GitHub..."
+    if ($Interactive) { Log-Message "[Check Updates] Querying $script:DawnReleasesApi..." }
+    
+    $runspace = [powershell]::Create().AddScript({
+        param($apiUrl)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        try {
+            $headers = @{ 'User-Agent' = 'Dawn-GUI-Installer' }
+            $releases = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 10
+            return @{ Success = $true; Releases = $releases }
+        } catch {
+            return @{ Success = $false; Error = $_.Exception.Message }
+        }
+    }).AddParameter('apiUrl', $script:DawnReleasesApi)
+    
+    $asyncResult = $runspace.BeginInvoke()
+    
+    $checkTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $checkTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+    $checkTimer.add_Tick({
+        if (-not $asyncResult.IsCompleted) { return }
+        $checkTimer.Stop()
+        
+        try {
+            $output = $runspace.EndInvoke($asyncResult)
+            $runspace.Dispose()
+            $res = $output[0]
+            
+            if (-not $res.Success) {
+                Set-StatusText "Could not connect to GitHub to check for updates."
+                if ($Interactive) {
+                    Log-Message "[Check Updates] Failed: $($res.Error)"
+                    [System.Windows.MessageBox]::Show("Could not check for Dawn updates:`n$($res.Error)`n`nPlease check your internet connection or visit https://github.com/isinternets/Dawn directly.", "Update Check", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
+                }
+                return
+            }
+            
+            $releases = $res.Releases
+            $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+            if (-not $latest) {
+                Set-StatusText "No releases found on GitHub."
+                return
+            }
+            
+            $script:LatestRelease = $latest
+            $latestTag = $latest.tag_name
+            $latestClean = $latestTag -replace '^[vV]', ''
+            $currentVer = if ($script:CurrentManifest) { $script:CurrentManifest.release } else { $null }
+            $installerPresent = Test-Path -LiteralPath $script:InstallerScriptPath
+            
+            $cmp = Compare-DawnVersions $currentVer $latestClean
+            
+            if ($cmp -lt 0) {
+                $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible
+                $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Visible
+                $headerUpdateBadgeText.Text = "Update: $latestTag"
+                $txtUpdateVersionTag.Text = $latestTag
+                
+                $relName = if ($latest.name) { $latest.name } else { $latestTag }
+                $pubDate = if ($latest.published_at) { (Get-Date $latest.published_at).ToString('yyyy-MM-dd') } else { '' }
+                
+                if (-not $installerPresent -or -not $script:CurrentManifest) {
+                    $txtUpdateReleaseDetails.Text = "Dawn release package not found in this folder. Latest release on GitHub is $latestTag ($relName, $pubDate). Click 'Update In-Place' to download and set up Dawn in this folder."
+                    $btnUpdateApply.Content = "Download Dawn"
+                } else {
+                    $txtUpdateReleaseDetails.Text = "Newer Dawn release found: $relName (Published: $pubDate). You currently have v$currentVer. Click 'Update In-Place' to update your local files, or save the release ZIP."
+                    $btnUpdateApply.Content = "Update In-Place"
+                }
+                
+                Set-StatusText "Dawn update available: $latestTag"
+                Log-Message "[Check Updates] Newer Dawn release available: $latestTag ($relName)"
+                
+                if ($Interactive) {
+                    $mainTabs.SelectedItem = $tabInstall
+                }
+            } else {
+                $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+                $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Collapsed
+                Set-StatusText "Dawn is up to date (v$currentVer)."
+                Log-Message "[Check Updates] Dawn is up to date (current: v$currentVer, latest: $latestTag)."
+                
+                if ($Interactive) {
+                    [System.Windows.MessageBox]::Show("You are currently running the latest Dawn release: v$currentVer`n`nNo update is needed.", "Dawn is Up to Date", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+                }
+            }
+        } catch {
+            Log-Message "[Check Updates Error]: $($_.Exception.Message)"
+        } finally {
+            $script:IsCheckingUpdates = $false
+            if ($btnCheckUpdates) { $btnCheckUpdates.IsEnabled = $true }
+            if ($btnCheckUpdatesInline) { $btnCheckUpdatesInline.IsEnabled = $true }
+            if ($btnCheckUpdatesGuide) { $btnCheckUpdatesGuide.IsEnabled = $true }
+        }
+    })
+    $checkTimer.Start()
+}
+
+function Apply-DawnUpdate {
+    if (-not $script:LatestRelease) { return }
+    $latest = $script:LatestRelease
+    $tag = $latest.tag_name
+    
+    $zipAsset = $latest.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*.sha256" } | Select-Object -First 1
+    if (-not $zipAsset) {
+        [System.Windows.MessageBox]::Show("The latest release ($tag) does not have an attached ZIP archive asset.`nPlease visit the release page on GitHub to download manually.", "Update Notice", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+        if ($latest.html_url) { Start-Process $latest.html_url }
+        return
+    }
+    
+    $sizeMb = [math]::Round($zipAsset.size / 1MB, 2)
+    $confirm = [System.Windows.MessageBox]::Show("Download and apply Dawn $tag to this directory?`n`nDirectory: $script:ScriptDir`nFile: $($zipAsset.name) ($sizeMb MB)`n`nThis will update release.json, payload files, and Install-Dawn scripts to $tag.", "Confirm In-Place Update", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+    if ($confirm -ne [System.Windows.MessageBoxResult]::Yes) { return }
+    
+    $btnUpdateApply.IsEnabled = $false
+    $btnUpdateDownloadZip.IsEnabled = $false
+    Set-StatusText "Downloading Dawn $tag ($($zipAsset.name))..."
+    Log-Message "[Update] Downloading $($zipAsset.browser_download_url)..."
+    
+    $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "Dawn_Update_$([System.Guid]::NewGuid().ToString('N')).zip"
+    
+    $runspace = [powershell]::Create().AddScript({
+        param($url, $outFile)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing
+            return @{ Success = $true }
+        } catch {
+            return @{ Success = $false; Error = $_.Exception.Message }
+        }
+    }).AddParameter('url', $zipAsset.browser_download_url).AddParameter('outFile', $tempZip)
+    
+    $asyncResult = $runspace.BeginInvoke()
+    
+    $extractTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $extractTimer.Interval = [TimeSpan]::FromMilliseconds(200)
+    $extractTimer.add_Tick({
+        if (-not $asyncResult.IsCompleted) { return }
+        $extractTimer.Stop()
+        
+        try {
+            $output = $runspace.EndInvoke($asyncResult)
+            $runspace.Dispose()
+            $res = $output[0]
+            
+            if (-not $res.Success) {
+                Set-StatusText "Update download failed."
+                Log-Message "[Update Error]: $($res.Error)"
+                [System.Windows.MessageBox]::Show("Failed to download update archive:`n$($res.Error)", "Download Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+                $btnUpdateApply.IsEnabled = $true
+                $btnUpdateDownloadZip.IsEnabled = $true
+                return
+            }
+            
+            Set-StatusText "Extracting Dawn $tag files..."
+            Log-Message "[Update] Extracting update files into $script:ScriptDir..."
+            
+            Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+            $archive = [System.IO.Compression.ZipFile]::OpenRead($tempZip)
+            try {
+                foreach ($entry in $archive.Entries) {
+                    if ([string]::IsNullOrEmpty($entry.Name)) {
+                        $dirPath = Join-Path $script:ScriptDir $entry.FullName
+                        if (-not (Test-Path -LiteralPath $dirPath)) {
+                            [System.IO.Directory]::CreateDirectory($dirPath) | Out-Null
+                        }
+                        continue
+                    }
+                    $destPath = Join-Path $script:ScriptDir $entry.FullName
+                    $destDir = [System.IO.Path]::GetDirectoryName($destPath)
+                    if (-not (Test-Path -LiteralPath $destDir)) {
+                        [System.IO.Directory]::CreateDirectory($destDir) | Out-Null
+                    }
+                    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destPath, $true)
+                }
+            } finally {
+                $archive.Dispose()
+                Remove-Item -LiteralPath $tempZip -Force -ErrorAction SilentlyContinue
+            }
+            
+            Load-ReleaseManifest
+            $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+            $headerUpdateBadge.Visibility = [System.Windows.Visibility]::Collapsed
+            Set-StatusText "Dawn successfully updated to $tag!"
+            Log-Message "[Update] Dawn release files successfully updated to $tag!"
+            
+            [System.Windows.MessageBox]::Show("Dawn has been successfully updated to $tag!`n`nYou can now install it to your game folder.", "Update Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+        } catch {
+            Log-Message "[Update Extraction Error]: $($_.Exception.Message)"
+            [System.Windows.MessageBox]::Show("Error extracting update files:`n$($_.Exception.Message)", "Update Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+        } finally {
+            $btnUpdateApply.IsEnabled = $true
+            $btnUpdateDownloadZip.IsEnabled = $true
+        }
+    })
+    $extractTimer.Start()
+}
+
+function Download-DawnZip {
+    if (-not $script:LatestRelease) { return }
+    $latest = $script:LatestRelease
+    $tag = $latest.tag_name
+    
+    $zipAsset = $latest.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*.sha256" } | Select-Object -First 1
+    if (-not $zipAsset) {
+        if ($latest.html_url) { Start-Process $latest.html_url }
+        return
+    }
+    
+    $sfd = New-Object Microsoft.Win32.SaveFileDialog
+    $sfd.Filter = "ZIP Archive (*.zip)|*.zip|All Files (*.*)|*.*"
+    $sfd.FileName = $zipAsset.name
+    $sfd.InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
+    
+    if ($sfd.ShowDialog($window) -ne $true) { return }
+    
+    $targetPath = $sfd.FileName
+    Set-StatusText "Downloading $($zipAsset.name)..."
+    Log-Message "[Download] Downloading $($zipAsset.name) to $targetPath..."
+    
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $targetPath -UseBasicParsing
+        Set-StatusText "Downloaded $($zipAsset.name) successfully."
+        Log-Message "[Download] Saved archive to $targetPath"
+        
+        $choice = [System.Windows.MessageBox]::Show("Dawn $tag archive successfully downloaded to:`n$targetPath`n`nWould you like to open the folder in File Explorer?", "Download Complete", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Information)
+        if ($choice -eq [System.Windows.MessageBoxResult]::Yes) {
+            Start-Process explorer.exe -ArgumentList "/select,`"$targetPath`""
+        }
+    } catch {
+        Log-Message "[Download Error]: $($_.Exception.Message)"
+        [System.Windows.MessageBox]::Show("Failed to download archive:`n$($_.Exception.Message)", "Download Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
     }
 }
 
@@ -1550,6 +1889,46 @@ $btnClearLog.add_Click({
     $txtConsole.Clear()
 })
 
+# --- Update System Event Handlers ---
+if ($btnCheckUpdates) {
+    $btnCheckUpdates.add_Click({ Check-DawnUpdates -Interactive })
+}
+if ($btnCheckUpdatesInline) {
+    $btnCheckUpdatesInline.add_Click({ Check-DawnUpdates -Interactive })
+}
+if ($btnCheckUpdatesGuide) {
+    $btnCheckUpdatesGuide.add_Click({ Check-DawnUpdates -Interactive })
+}
+if ($headerUpdateBadge) {
+    $headerUpdateBadge.add_MouseLeftButtonDown({
+        $mainTabs.SelectedItem = $tabInstall
+        $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible
+    })
+}
+if ($btnUpdateApply) {
+    $btnUpdateApply.add_Click({ Apply-DawnUpdate })
+}
+if ($btnUpdateDownloadZip) {
+    $btnUpdateDownloadZip.add_Click({ Download-DawnZip })
+}
+if ($btnUpdateViewRelease) {
+    $btnUpdateViewRelease.add_Click({
+        if ($script:LatestRelease -and $script:LatestRelease.html_url) {
+            Start-Process $script:LatestRelease.html_url
+        } else {
+            Start-Process $script:DawnRepoUrl
+        }
+    })
+}
+if ($btnOpenDawnRepo) {
+    $btnOpenDawnRepo.add_Click({ Start-Process $script:DawnRepoUrl })
+}
+if ($btnDismissUpdate) {
+    $btnDismissUpdate.add_Click({
+        $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+    })
+}
+
 # --- Background Destiny 2 Process Poller ---
 $procTimer = New-Object System.Windows.Threading.DispatcherTimer
 $procTimer.Interval = [TimeSpan]::FromSeconds(2)
@@ -1604,6 +1983,9 @@ $window.add_Loaded({
         Log-Message "Manifest: $script:ReleaseManifestPath"
         Log-Message "Installer Script: $script:InstallerScriptPath"
         Log-Message "Downloader Script: $script:DownloadScriptPath"
+
+        # Check for Dawn upstream updates in background (non-blocking)
+        Check-DawnUpdates
     } catch {
         try {
             Log-Message "[ERROR in startup]: $($_.Exception.Message)"
