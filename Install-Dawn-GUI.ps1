@@ -1749,6 +1749,12 @@ function Stop-SteamDownloadProcess {
 
     if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
     if ($downloadProgressContainer) { $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed }
+    if ($downloadProgressBar) {
+        $downloadProgressBar.IsIndeterminate = $true
+        $downloadProgressBar.Value = 0
+    }
+    $script:DlQrLines = New-Object System.Collections.Generic.List[string]
+    $script:DlCurrentDepotName = $null
 
     if ($script:DlReader) {
         $script:DlReader.Dispose()
@@ -1792,8 +1798,12 @@ function Start-SteamDownloadProcess {
 
     $script:IsRunningDownload = $true
     $script:DlQrLines = New-Object System.Collections.Generic.List[string]
-    $script:DlQrFound = $false
+    $script:DlCurrentDepotName = $null
     if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+    if ($downloadProgressBar) {
+        $downloadProgressBar.IsIndeterminate = $true
+        $downloadProgressBar.Value = 0
+    }
 
     $btnStartDownload.IsEnabled = $false
     $btnInstall.IsEnabled = $false
@@ -1925,38 +1935,99 @@ function Start-SteamDownloadProcess {
                     $line = $script:DlReader.ReadLine()
                     if ($null -ne $line) {
                         if ($line -like "*$([char]0x2588)*") {
-                            if (-not $script:DlQrFound) {
-                                $script:DlQrLines.Add($line)
-                                if ($script:DlQrLines.Count -eq 29) {
-                                    $script:DlQrFound = $true
-                                    $bmp = Render-SteamQrBitmap -QrLines $script:DlQrLines
-                                    if ($bmp) {
-                                        $imgSteamQr.Source = $bmp
-                                        $panelSteamQr.Visibility = [System.Windows.Visibility]::Visible
-                                        $txtDownloadProgressStatus.Text = "Steam Mobile authentication required"
-                                        if ($txtQrStatus) { $txtQrStatus.Text = "Waiting for Steam Mobile scan..." }
-                                        Set-StatusText "Scan the QR code with your Steam Mobile App"
-                                        Log-Message "[Steam Auth] Steam Mobile QR code generated and displayed in GUI."
-                                    }
+                            $script:DlQrLines.Add($line)
+                            if ($script:DlQrLines.Count -eq 29) {
+                                $bmp = Render-SteamQrBitmap -QrLines $script:DlQrLines
+                                if ($bmp) {
+                                    $imgSteamQr.Source = $bmp
+                                    $panelSteamQr.Visibility = [System.Windows.Visibility]::Visible
+                                    $txtDownloadProgressStatus.Text = "Steam Mobile authentication required"
+                                    if ($txtQrStatus) { $txtQrStatus.Text = "Waiting for Steam Mobile scan..." }
+                                    Set-StatusText "Scan the QR code with your Steam Mobile App"
+                                    Log-Message "[Steam Auth] Steam Mobile QR code displayed in GUI."
                                 }
+                                $script:DlQrLines.Clear()
                             }
                         } else {
-                            Log-Message $line
+                            if ($line -like '*The QR code has changed*' -or $line -like '*Logging in with QR code*' -or $line -like '*Use the Steam Mobile App to sign in*') {
+                                $script:DlQrLines.Clear()
+                                if ($line -like '*The QR code has changed*') {
+                                    if ($txtQrStatus) { $txtQrStatus.Text = "QR code refreshed. Waiting for Steam Mobile scan..." }
+                                    Log-Message "[Steam Auth] QR code refreshed by Steam."
+                                }
+                            } elseif ($script:DlQrLines.Count -gt 0 -and $script:DlQrLines.Count -lt 29 -and $line.Trim().Length -gt 0) {
+                                $script:DlQrLines.Clear()
+                            }
+
+                            if ($line.Trim().Length -gt 0) {
+                                Log-Message $line
+                            }
+
+                            $isAuthOrDownload = (
+                                $line -like '*Success! Next time you can login*' -or
+                                $line -like '*Logged in as*' -or
+                                $line -like '*Connected to Steam3!*' -or
+                                $line -like '*Using Steam3 suggested CellID*' -or
+                                $line -like '*licenses for account*' -or
+                                $line -like '*Got depot key for*' -or
+                                $line -like '*Processing depot*' -or
+                                $line -like '*Downloading depot*' -or
+                                $line -like '*Already have manifest*' -or
+                                $line -like '*Step 1/2*' -or
+                                $line -like '*Step 2/2*'
+                            )
+
+                            if ($isAuthOrDownload) {
+                                if ($panelSteamQr -and $panelSteamQr.Visibility -ne [System.Windows.Visibility]::Collapsed) {
+                                    $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed
+                                    Log-Message "[Steam Auth] Authenticated successfully. Starting download..."
+                                }
+                            }
+
                             if ($line -like '*Connecting to Steam3*') {
-                                $txtDownloadProgressStatus.Text = "Connecting to Steam..."
+                                $txtDownloadProgressStatus.Text = "Connecting to Steam servers..."
+                                Set-StatusText "Connecting to Steam..."
                             } elseif ($line -like '*Logging in with QR code*') {
                                 $txtDownloadProgressStatus.Text = "Waiting for Steam Mobile scan..."
-                            } elseif ($line -like '*Logged in as*' -or $line -like '*Connected to Steam3!*') {
-                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
-                                $txtDownloadProgressStatus.Text = "Authenticated! Preparing download..."
-                            } elseif ($line -like '*Step 1/2*' -or $line -like '*Content Depot*') {
-                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                                Set-StatusText "Waiting for Steam Mobile scan..."
+                            } elseif ($line -like '*Success! Next time you can login*' -or $line -like '*Logged in as*' -or $line -like '*Connected to Steam3!*') {
+                                $txtDownloadProgressStatus.Text = "Steam authenticated! Preparing download..."
+                                Set-StatusText "Steam authenticated. Preparing download..."
+                            } elseif ($line -like '*Step 1/2*' -or $line -like '*Content Depot*' -or $line -like '*1085661*') {
+                                $script:DlCurrentDepotName = "Content Depot (1085661)"
                                 $txtDownloadProgressStatus.Text = "Downloading Content Depot 1085661..."
-                            } elseif ($line -like '*Step 2/2*' -or $line -like '*Binaries Depot*') {
-                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                                Set-StatusText "Downloading Destiny 2 Content Depot (1085661)..."
+                            } elseif ($line -like '*Step 2/2*' -or $line -like '*Binaries Depot*' -or $line -like '*1085662*') {
+                                $script:DlCurrentDepotName = "Binaries Depot (1085662)"
                                 $txtDownloadProgressStatus.Text = "Downloading Binaries Depot 1085662..."
+                                Set-StatusText "Downloading Destiny 2 Binaries Depot (1085662)..."
+                            } elseif ($line -like '*Processing depot*' -or $line -like '*Got depot key*') {
+                                $txtDownloadProgressStatus.Text = "Processing depot manifests..."
+                                Set-StatusText "Processing Steam depot..."
                             } elseif ($line -like '*VERIFIED*') {
-                                $txtDownloadProgressStatus.Text = "Download verified!"
+                                $txtDownloadProgressStatus.Text = "Destiny 2 download verified!"
+                                Set-StatusText "Download complete and verified!"
+                                if ($downloadProgressBar) {
+                                    $downloadProgressBar.IsIndeterminate = $false
+                                    $downloadProgressBar.Value = 100
+                                }
+                            }
+
+                            if ($line -match '(\d{1,3}(?:\.\d{1,2})?\s*%)') {
+                                $pctStr = $matches[1].Trim()
+                                $depotLabel = if ($script:DlCurrentDepotName) { $script:DlCurrentDepotName } else { "Destiny 2" }
+                                $txtDownloadProgressStatus.Text = "Downloading $depotLabel ($pctStr)..."
+                                Set-StatusText "Downloading ${depotLabel}: $pctStr"
+
+                                if ($downloadProgressBar) {
+                                    try {
+                                        $pctNum = [double]($pctStr.Replace('%', '').Trim())
+                                        if ($pctNum -ge 0 -and $pctNum -le 100) {
+                                            $downloadProgressBar.IsIndeterminate = $false
+                                            $downloadProgressBar.Value = $pctNum
+                                        }
+                                    } catch {}
+                                }
                             }
                         }
                     }
@@ -1967,7 +2038,7 @@ function Start-SteamDownloadProcess {
 
                     while (-not $script:DlReader.EndOfStream) {
                         $line = $script:DlReader.ReadLine()
-                        if ($null -ne $line -and $line -notlike "*$([char]0x2588)*") { Log-Message $line }
+                        if ($null -ne $line -and $line -notlike "*$([char]0x2588)*" -and $line.Trim().Length -gt 0) { Log-Message $line }
                     }
 
                     $script:DlReader.Dispose()
@@ -1986,6 +2057,10 @@ function Start-SteamDownloadProcess {
                     $btnStartDownload.IsEnabled = $true
                     $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
                     if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                    if ($downloadProgressBar) {
+                        $downloadProgressBar.IsIndeterminate = $true
+                        $downloadProgressBar.Value = 0
+                    }
 
                     if ($exitCode -eq 0) {
                         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Download finished successfully."
@@ -2013,6 +2088,10 @@ function Start-SteamDownloadProcess {
                 $btnStartDownload.IsEnabled = $true
                 $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
                 if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                if ($downloadProgressBar) {
+                    $downloadProgressBar.IsIndeterminate = $true
+                    $downloadProgressBar.Value = 0
+                }
                 Update-GameValidation
             }
         })
