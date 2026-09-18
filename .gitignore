@@ -1,0 +1,19 @@
+# Upstream Dawn release files & game payload
+payload/
+release.json
+Install-Dawn.ps1
+Install-Dawn.cmd
+READ-ME.txt
+
+# Tools & executables (DepotDownloader is automatically acquired if missing)
+tools/
+*.exe
+*.zip
+
+# Runtime & backup data
+.dawn/
+*.log
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini
