@@ -12,6 +12,7 @@ tools/
 
 # Runtime & backup data
 dist/
+DawnTest/
 .dawn/
 *.log
 .vs/
