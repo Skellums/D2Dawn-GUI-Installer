@@ -580,7 +580,7 @@ $xaml = @'
                                 <TextBlock Text="STEAM AUTHENTICATION" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" Margin="0,0,0,8"/>
 
                                 <RadioButton Name="RadioAuthQr" Content="Steam Mobile App QR Code (Recommended)" IsChecked="True" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
-                                <TextBlock Text="Fast &amp; secure: No username or password required. Scan the QR code in the console using your Steam Mobile App." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,12"/>
+                                <TextBlock Text="Fast &amp; secure: No credentials stored. The QR code displays directly in this window for mobile scanning." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,12"/>
 
                                 <RadioButton Name="RadioAuthUser" Content="Steam Account Username &amp; Password" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
                                 <TextBlock Text="Enter your Steam login username. You will be prompted for your password and Steam Guard code." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,8"/>
@@ -592,6 +592,39 @@ $xaml = @'
                             </StackPanel>
                         </Border>
 
+                        <!-- EMBEDDED STEAM QR CODE CONTAINER -->
+                        <Border Name="PanelSteamQr" Visibility="Collapsed" Background="#13171F" BorderBrush="#E5A93C" BorderThickness="1.5" CornerRadius="8" Padding="18" Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- QR Image with clean white background for high contrast -->
+                                <Border Grid.Column="0" Background="#FFFFFF" Padding="8" CornerRadius="6" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,20,0">
+                                    <Image Name="ImgSteamQr" Width="192" Height="192" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="&#x1F4F1;" FontSize="18" Foreground="#E5A93C" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Scan with Steam Mobile App" FontSize="15" FontWeight="Bold" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <TextBlock Text="1. Open the Steam Mobile App on your phone." FontSize="12" Foreground="#CBD5E1" Margin="0,2,0,3"/>
+                                    <TextBlock Text="2. Tap the Scan icon (or menu &gt; Steam Guard &gt; Scan QR Code)." FontSize="12" Foreground="#CBD5E1" Margin="0,0,0,3"/>
+                                    <TextBlock Text="3. Point your camera at this QR code to authorize." FontSize="12" Foreground="#CBD5E1" Margin="0,0,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Background="#1A2332" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,10,0">
+                                            <TextBlock Name="TxtQrStatus" Text="&#x23F3; Waiting for Steam Mobile scan..." FontSize="12" Foreground="#38BDF8" FontWeight="SemiBold"/>
+                                        </Border>
+                                        <Button Name="BtnCancelDownloadQr" Style="{StaticResource StandardBtn}" Content="Cancel" Height="32" Padding="14,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                         <!-- DOWNLOAD OPTIONS & ACTION -->
                         <Border Background="#1A1F27" BorderBrush="#29313E" BorderThickness="1" CornerRadius="8" Padding="18">
                             <StackPanel>
@@ -601,9 +634,9 @@ $xaml = @'
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <StackPanel Grid.Column="0">
-                                        <CheckBox Name="ChkDownloadConsole" Content="Launch download in interactive terminal window (Recommended)" IsChecked="True" Foreground="#CBD5E1" FontSize="12.5" Margin="0,0,0,6"/>
-                                        <TextBlock Text="Opens a command prompt displaying the ANSI QR code for mobile scanning and live progress." FontSize="11" Foreground="#64748B"/>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <CheckBox Name="ChkDownloadConsole" Content="Launch download in external terminal window" IsChecked="False" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Optional: Open an external command prompt window instead of downloading inside the GUI." FontSize="11" Foreground="#64748B"/>
                                     </StackPanel>
 
                                     <Button Name="BtnStartDownload" Grid.Column="1" Style="{StaticResource PrimaryBtn}" Content="&#x2B07; Download Destiny 2" MinWidth="200" Height="42" VerticalAlignment="Center"/>
@@ -611,7 +644,14 @@ $xaml = @'
 
                                 <!-- Download progress status -->
                                 <StackPanel Name="DownloadProgressContainer" Visibility="Collapsed" Margin="0,8,0,0">
-                                    <TextBlock Name="TxtDownloadProgressStatus" Text="Starting download process..." FontSize="12" Foreground="#E5A93C" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Name="TxtDownloadProgressStatus" Grid.Column="0" Text="Starting download process..." FontSize="12" Foreground="#E5A93C" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <Button Name="BtnCancelDownload" Grid.Column="1" Style="{StaticResource StandardBtn}" Content="Cancel" Height="24" Padding="8,2" FontSize="11"/>
+                                    </Grid>
                                     <ProgressBar Name="DownloadProgressBar" Height="6" Background="#262D38" Foreground="#E5A93C" BorderThickness="0" IsIndeterminate="True"/>
                                 </StackPanel>
                             </StackPanel>
@@ -877,6 +917,11 @@ $btnStartDownload         = $window.FindName('BtnStartDownload')
 $downloadProgressContainer= $window.FindName('DownloadProgressContainer')
 $txtDownloadProgressStatus= $window.FindName('TxtDownloadProgressStatus')
 $downloadProgressBar     = $window.FindName('DownloadProgressBar')
+$btnCancelDownload        = $window.FindName('BtnCancelDownload')
+$panelSteamQr             = $window.FindName('PanelSteamQr')
+$imgSteamQr               = $window.FindName('ImgSteamQr')
+$txtQrStatus              = $window.FindName('TxtQrStatus')
+$btnCancelDownloadQr      = $window.FindName('BtnCancelDownloadQr')
 
 # Control References - Backups Tab
 $btnRefreshBackups        = $window.FindName('BtnRefreshBackups')
@@ -908,6 +953,8 @@ $script:ApplyRunspace          = $null
 $script:ApplyAsyncResult       = $null
 $script:ApplyTempZip           = $null
 $script:ApplyTargetTag         = $null
+$script:DlQrLines              = $null
+$script:DlQrFound              = $false
 
 # --- Helper Functions ---
 function Load-ReleaseManifest {
@@ -1618,6 +1665,114 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
     $installTimer.Start()
 }
 
+## --- Steam QR Code Rendering & Process Control ---
+function Render-SteamQrBitmap {
+    param(
+        [System.Collections.Generic.List[string]]$QrLines
+    )
+
+    if (-not $QrLines -or $QrLines.Count -lt 29) { return $null }
+
+    try {
+        $gridSize = 29
+        $margin = 2
+        $totalDim = $gridSize + ($margin * 2) # 33 modules
+        $scale = 8 # 264x264 pixels
+        $imgDim = $totalDim * $scale
+        $stride = $imgDim * 4
+        $pixelData = New-Object byte[] ($stride * $imgDim)
+
+        # Initialize background to pure white
+        for ($i = 0; $i -lt $pixelData.Length; $i += 4) {
+            $pixelData[$i + 0] = [byte]255
+            $pixelData[$i + 1] = [byte]255
+            $pixelData[$i + 2] = [byte]255
+            $pixelData[$i + 3] = [byte]255
+        }
+
+        # Fill black QR modules
+        for ($row = 0; $row -lt $gridSize; $row++) {
+            $line = $QrLines[$row]
+            for ($col = 0; $col -lt $gridSize; $col++) {
+                $cIdx = 8 + ($col * 2)
+                $isDark = $false
+                if ($cIdx -lt $line.Length) {
+                    $ch = $line[$cIdx]
+                    if ([int]$ch -eq 0x2588) { $isDark = $true }
+                }
+
+                if ($isDark) {
+                    $gridY = $row + $margin
+                    $gridX = $col + $margin
+                    for ($py = 0; $py -lt $scale; $py++) {
+                        $y = ($gridY * $scale) + $py
+                        for ($px = 0; $px -lt $scale; $px++) {
+                            $x = ($gridX * $scale) + $px
+                            $offset = ($y * $stride) + ($x * 4)
+                            $pixelData[$offset + 0] = [byte]0
+                            $pixelData[$offset + 1] = [byte]0
+                            $pixelData[$offset + 2] = [byte]0
+                            $pixelData[$offset + 3] = [byte]255
+                        }
+                    }
+                }
+            }
+        }
+
+        $bmp = [System.Windows.Media.Imaging.BitmapSource]::Create(
+            $imgDim, $imgDim,
+            96.0, 96.0,
+            [System.Windows.Media.PixelFormats]::Bgr32,
+            $null,
+            $pixelData,
+            $stride
+        )
+        $bmp.Freeze()
+        return $bmp
+    } catch {
+        Log-Message "[ERROR rendering QR]: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Stop-SteamDownloadProcess {
+    if (-not $script:IsRunningDownload) { return }
+    Log-Message "[Download] Cancelling Steam download..."
+    Set-StatusText "Cancelling Steam download..."
+
+    if ($script:DlProc -and -not $script:DlProc.HasExited) {
+        try {
+            Stop-Process -Id $script:DlProc.Id -Force -ErrorAction SilentlyContinue
+            Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+
+    if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+    if ($downloadProgressContainer) { $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed }
+
+    if ($script:DlReader) {
+        $script:DlReader.Dispose()
+        $script:DlReader = $null
+    }
+    if ($script:DlStream) {
+        $script:DlStream.Dispose()
+        $script:DlStream = $null
+    }
+    if ($script:DlTempLog -and (Test-Path -LiteralPath $script:DlTempLog)) {
+        Remove-Item -LiteralPath $script:DlTempLog -Force -ErrorAction SilentlyContinue
+    }
+    if ($script:DlProc) {
+        $script:DlProc.Dispose()
+        $script:DlProc = $null
+    }
+
+    $script:IsRunningDownload = $false
+    $btnStartDownload.IsEnabled = $true
+    Set-StatusText "Steam download cancelled."
+    Log-Message "[Download] Steam download cancelled by user."
+    Update-GameValidation
+}
+
 # --- Execution Engine for Steam Depot Downloader ---
 function Start-SteamDownloadProcess {
     if ($script:IsRunningInstaller -or $script:IsRunningDownload) { return }
@@ -1636,11 +1791,15 @@ function Start-SteamDownloadProcess {
     }
 
     $script:IsRunningDownload = $true
+    $script:DlQrLines = New-Object System.Collections.Generic.List[string]
+    $script:DlQrFound = $false
+    if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+
     $btnStartDownload.IsEnabled = $false
     $btnInstall.IsEnabled = $false
     $btnRestore.IsEnabled = $false
     $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Visible
-    $txtDownloadProgressStatus.Text = "Downloading Destiny 2 build 86657..."
+    $txtDownloadProgressStatus.Text = "Initializing Steam Depot Downloader..."
     Set-StatusText "Steam Depot Downloader running..."
 
     Save-UserSettings $txtGameRoot.Text.Trim() $targetDir $username
@@ -1723,7 +1882,6 @@ function Start-SteamDownloadProcess {
         $watchTimer.Start()
 
     } else {
-        $mainTabs.SelectedItem = $tabConsole
         Log-Message "=========================================================="
         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Starting Steam Depot Downloader"
         Log-Message "Destination: $script:DlTargetDir"
@@ -1750,7 +1908,7 @@ function Start-SteamDownloadProcess {
         }
 
         $script:DlStream = [System.IO.File]::Open($script:DlTempLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-        $script:DlReader = New-Object System.IO.StreamReader($script:DlStream, [System.Text.Encoding]::UTF8)
+        $script:DlReader = New-Object System.IO.StreamReader($script:DlStream, [System.Text.Encoding]::GetEncoding(437))
 
         $dlTimer = New-Object System.Windows.Threading.DispatcherTimer
         $dlTimer.Interval = [TimeSpan]::FromMilliseconds(80)
@@ -1766,13 +1924,40 @@ function Start-SteamDownloadProcess {
                 while (-not $script:DlReader.EndOfStream) {
                     $line = $script:DlReader.ReadLine()
                     if ($null -ne $line) {
-                        Log-Message $line
-                        if ($line -like '*Step 1/2*') {
-                            $txtDownloadProgressStatus.Text = "Downloading Content Depot 1085661..."
-                        } elseif ($line -like '*Step 2/2*') {
-                            $txtDownloadProgressStatus.Text = "Downloading Binaries Depot 1085662..."
-                        } elseif ($line -like '*VERIFIED*') {
-                            $txtDownloadProgressStatus.Text = "Download verified!"
+                        if ($line -like "*$([char]0x2588)*") {
+                            if (-not $script:DlQrFound) {
+                                $script:DlQrLines.Add($line)
+                                if ($script:DlQrLines.Count -eq 29) {
+                                    $script:DlQrFound = $true
+                                    $bmp = Render-SteamQrBitmap -QrLines $script:DlQrLines
+                                    if ($bmp) {
+                                        $imgSteamQr.Source = $bmp
+                                        $panelSteamQr.Visibility = [System.Windows.Visibility]::Visible
+                                        $txtDownloadProgressStatus.Text = "Steam Mobile authentication required"
+                                        if ($txtQrStatus) { $txtQrStatus.Text = "Waiting for Steam Mobile scan..." }
+                                        Set-StatusText "Scan the QR code with your Steam Mobile App"
+                                        Log-Message "[Steam Auth] Steam Mobile QR code generated and displayed in GUI."
+                                    }
+                                }
+                            }
+                        } else {
+                            Log-Message $line
+                            if ($line -like '*Connecting to Steam3*') {
+                                $txtDownloadProgressStatus.Text = "Connecting to Steam..."
+                            } elseif ($line -like '*Logging in with QR code*') {
+                                $txtDownloadProgressStatus.Text = "Waiting for Steam Mobile scan..."
+                            } elseif ($line -like '*Logged in as*' -or $line -like '*Connected to Steam3!*') {
+                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                                $txtDownloadProgressStatus.Text = "Authenticated! Preparing download..."
+                            } elseif ($line -like '*Step 1/2*' -or $line -like '*Content Depot*') {
+                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                                $txtDownloadProgressStatus.Text = "Downloading Content Depot 1085661..."
+                            } elseif ($line -like '*Step 2/2*' -or $line -like '*Binaries Depot*') {
+                                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
+                                $txtDownloadProgressStatus.Text = "Downloading Binaries Depot 1085662..."
+                            } elseif ($line -like '*VERIFIED*') {
+                                $txtDownloadProgressStatus.Text = "Download verified!"
+                            }
                         }
                     }
                 }
@@ -1782,7 +1967,7 @@ function Start-SteamDownloadProcess {
 
                     while (-not $script:DlReader.EndOfStream) {
                         $line = $script:DlReader.ReadLine()
-                        if ($null -ne $line) { Log-Message $line }
+                        if ($null -ne $line -and $line -notlike "*$([char]0x2588)*") { Log-Message $line }
                     }
 
                     $script:DlReader.Dispose()
@@ -1800,6 +1985,7 @@ function Start-SteamDownloadProcess {
                     $script:IsRunningDownload = $false
                     $btnStartDownload.IsEnabled = $true
                     $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
+                    if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
 
                     if ($exitCode -eq 0) {
                         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Download finished successfully."
@@ -1826,6 +2012,7 @@ function Start-SteamDownloadProcess {
                 $script:IsRunningDownload = $false
                 $btnStartDownload.IsEnabled = $true
                 $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed
+                if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
                 Update-GameValidation
             }
         })
@@ -1934,6 +2121,18 @@ $radioAuthUser.add_Checked({
 $btnStartDownload.add_Click({
     Start-SteamDownloadProcess
 })
+
+# Download Tab: Cancel Download Buttons
+if ($btnCancelDownload) {
+    $btnCancelDownload.add_Click({
+        Stop-SteamDownloadProcess
+    })
+}
+if ($btnCancelDownloadQr) {
+    $btnCancelDownloadQr.add_Click({
+        Stop-SteamDownloadProcess
+    })
+}
 
 # Refresh Backups Button
 $btnRefreshBackups.add_Click({
