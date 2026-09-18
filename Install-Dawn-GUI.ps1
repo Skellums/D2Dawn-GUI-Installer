@@ -34,6 +34,8 @@ $script:DownloadScriptPath   = Join-Path $script:ScriptDir 'Download-DestinyBuil
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'
+$script:LogFileTimestamp     = (Get-Date).ToString("yyyyMMdd.HHmmss")
+$script:LogFilePath          = Join-Path $script:ScriptDir "dawn-gui_log.$($script:LogFileTimestamp).txt"
 
 # --- Configuration Persistence ---
 function Get-SavedSettings {
@@ -577,18 +579,21 @@ $xaml = @'
                         <!-- AUTHENTICATION SETTINGS -->
                         <Border Background="#1A1F27" BorderBrush="#29313E" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,0,14">
                             <StackPanel>
-                                <TextBlock Text="STEAM AUTHENTICATION" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" Margin="0,0,0,8"/>
+                                <TextBlock Text="STEAM AUTHENTICATION" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" Margin="0,0,0,10"/>
 
-                                <RadioButton Name="RadioAuthQr" Content="Steam Mobile App QR Code (Recommended)" IsChecked="True" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
-                                <TextBlock Text="Fast &amp; secure: No credentials stored. The QR code displays directly in this window for mobile scanning." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,12"/>
-
-                                <RadioButton Name="RadioAuthUser" Content="Steam Account Username &amp; Password" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
-                                <TextBlock Text="Enter your Steam login username. You will be prompted for your password and Steam Guard code." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,8"/>
-
-                                <StackPanel Name="PanelSteamUser" Visibility="Collapsed" Margin="22,4,0,0">
-                                    <TextBlock Text="Steam Username (account login name, not profile display name):" FontSize="12" Foreground="#94A3B8" Margin="0,0,0,4"/>
-                                    <TextBox Name="TxtSteamUsername" MaxWidth="320" HorizontalAlignment="Left" Background="#12151B" Foreground="#F8FAFC" BorderBrush="#384252" BorderThickness="1" FontSize="13" Padding="8,6"/>
+                                <!-- Steam Username Field (Always Available) -->
+                                <StackPanel Margin="0,0,0,14">
+                                    <TextBlock Text="Steam Username (account login name):" FontSize="12" Foreground="#CBD5E1" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <TextBox Name="TxtSteamUsername" MaxWidth="360" HorizontalAlignment="Left" Background="#12151B" Foreground="#F8FAFC" BorderBrush="#384252" BorderThickness="1" FontSize="13" Padding="8,6"/>
+                                    <TextBlock Text="Optional for QR, required for password login. Specifying your username allows Steam Guard authentication to be saved and reused across download steps and future sessions." FontSize="11" Foreground="#64748B" Margin="0,4,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
+
+                                <TextBlock Text="Authentication Mode:" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" Margin="0,0,0,6"/>
+                                <RadioButton Name="RadioAuthQr" Content="Steam Mobile App QR Code (Recommended)" IsChecked="True" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                <TextBlock Text="Fast &amp; secure: The QR code displays directly in this window for mobile scanning. If a username is provided, your session token is remembered for Step 2 and subsequent runs." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,10" TextWrapping="Wrap"/>
+
+                                <RadioButton Name="RadioAuthUser" Content="Saved Session / Password Login" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                <TextBlock Text="Authenticates using saved Steam Guard credentials for your username, or prompts for password/code if not yet saved." FontSize="11.5" Foreground="#64748B" Margin="22,0,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
 
@@ -746,8 +751,12 @@ $xaml = @'
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="LIVE INSTALLER STREAM" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="LIVE INSTALLER STREAM" FontSize="12" FontWeight="Bold" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Name="TxtLogFileLabel" FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+                            </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Name="BtnOpenLogFile" Style="{StaticResource StandardBtn}" Content="Open Log File" Padding="10,4" Margin="0,0,8,0"/>
                                 <Button Name="BtnCopyLog" Style="{StaticResource StandardBtn}" Content="Copy Log" Padding="10,4" Margin="0,0,8,0"/>
                                 <Button Name="BtnClearLog" Style="{StaticResource StandardBtn}" Content="Clear Console" Padding="10,4"/>
                             </StackPanel>
@@ -930,8 +939,10 @@ $chkRestoreWhatIf         = $window.FindName('ChkRestoreWhatIf')
 $btnRestore               = $window.FindName('BtnRestore')
 
 # Control References - Console Tab
+$btnOpenLogFile           = $window.FindName('BtnOpenLogFile')
 $btnCopyLog               = $window.FindName('BtnCopyLog')
 $btnClearLog              = $window.FindName('BtnClearLog')
+$txtLogFileLabel          = $window.FindName('TxtLogFileLabel')
 $txtConsole               = $window.FindName('TxtConsole')
 
 # State variables
@@ -1287,8 +1298,15 @@ function Set-StatusText([string] $Text) {
 }
 
 function Log-Message([string] $Message) {
-    $txtConsole.AppendText($Message + "`r`n")
-    $txtConsole.ScrollToEnd()
+    if ($txtConsole) {
+        $txtConsole.AppendText($Message + "`r`n")
+        $txtConsole.ScrollToEnd()
+    }
+    if ($script:LogFilePath) {
+        try {
+            [System.IO.File]::AppendAllText($script:LogFilePath, ($Message + "`r`n"), [System.Text.Encoding]::UTF8)
+        } catch {}
+    }
 }
 
 function Format-BackupTimestamp([string] $Name) {
@@ -1820,7 +1838,8 @@ function Start-SteamDownloadProcess {
 
     if ($isQr) {
         $argsList.Add("-UseQrCode")
-    } else {
+    }
+    if (-not [string]::IsNullOrWhiteSpace($username)) {
         $argsList.Add("-SteamUsername")
         $argsList.Add("`"$username`"")
     }
@@ -1981,6 +2000,15 @@ function Start-SteamDownloadProcess {
                                 if ($panelSteamQr -and $panelSteamQr.Visibility -ne [System.Windows.Visibility]::Collapsed) {
                                     $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed
                                     Log-Message "[Steam Auth] Authenticated successfully. Starting download..."
+                                }
+                            }
+
+                            if ($line -match 'Success! Next time you can login with -username\s+([^\s]+)\s+-remember-password') {
+                                $detectedUser = $matches[1].Trim()
+                                if (-not $txtSteamUsername.Text.Trim()) {
+                                    $txtSteamUsername.Text = $detectedUser
+                                    Save-UserSettings $txtGameRoot.Text.Trim() $txtDownloadDir.Text.Trim() $detectedUser
+                                    Log-Message "[Steam Auth] Automatically saved authenticated Steam username: $detectedUser"
                                 }
                             }
 
@@ -2189,12 +2217,16 @@ $btnBrowseDownloadDir.add_Click({
 })
 
 # Download Tab: Auth Mode Radio Toggled
-$radioAuthQr.add_Checked({
-    $panelSteamUser.Visibility = [System.Windows.Visibility]::Collapsed
-})
-$radioAuthUser.add_Checked({
-    $panelSteamUser.Visibility = [System.Windows.Visibility]::Visible
-})
+if ($radioAuthQr) {
+    $radioAuthQr.add_Checked({
+        # Steam Username remains visible and optional for QR mode
+    })
+}
+if ($radioAuthUser) {
+    $radioAuthUser.add_Checked({
+        # Steam Username is required for saved session / password mode
+    })
+}
 
 # Download Tab: Start Download Button
 $btnStartDownload.add_Click({
@@ -2282,6 +2314,21 @@ $btnLaunchGame.add_Click({
         [System.Windows.MessageBox]::Show("Failed to launch destiny2.exe: $($_.Exception.Message)", "Launch Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
     }
 })
+
+# Open Log File Button
+if ($btnOpenLogFile) {
+    $btnOpenLogFile.add_Click({
+        if ($script:LogFilePath -and (Test-Path -LiteralPath $script:LogFilePath)) {
+            try {
+                Start-Process -FilePath $script:LogFilePath
+            } catch {
+                [System.Windows.MessageBox]::Show("Failed to open log file: $($_.Exception.Message)", "Log Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
+            }
+        } else {
+            [System.Windows.MessageBox]::Show("Log file has not been created yet.", "Log Notice", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+        }
+    })
+}
 
 # Copy Log Button
 $btnCopyLog.add_Click({
@@ -2398,6 +2445,13 @@ $window.add_Loaded({
 
         $procTimer.Start()
         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Dawn Installer & Downloader GUI initialized."
+        if ($script:LogFilePath) {
+            $logFileName = [System.IO.Path]::GetFileName($script:LogFilePath)
+            if ($txtLogFileLabel) {
+                $txtLogFileLabel.Text = "($logFileName)"
+            }
+            Log-Message "Log File: $script:LogFilePath"
+        }
         Log-Message "Manifest: $script:ReleaseManifestPath"
         Log-Message "Installer Script: $script:InstallerScriptPath"
         Log-Message "Downloader Script: $script:DownloadScriptPath"

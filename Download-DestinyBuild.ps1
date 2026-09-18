@@ -164,10 +164,14 @@ function Invoke-DepotDownload {
         Write-Host "Destination: $destPath"
         Write-Host "=======================================================`n" -ForegroundColor Cyan
 
-        # Reuses saved credentials in destination\.DepotDownloader
-        $depot2Auth = @("-remember-password")
-        if (-not $UseQrCode -and $SteamUsername) {
+        # Reuses saved credentials / session tokens
+        $depot2Auth = @()
+        if ($SteamUsername) {
             $depot2Auth = @("-username", "$SteamUsername", "-remember-password")
+        } elseif ($UseQrCode) {
+            $depot2Auth = @("-qr", "-remember-password")
+        } else {
+            $depot2Auth = @("-remember-password")
         }
 
         $depot2Args = @(
