@@ -22,6 +22,7 @@ Built entirely using native **Windows PowerShell 5.1** and **WPF (XAML)**, it re
 
 - **🎨 Modern Destiny / Dawn UI**: Custom dark gunmetal and Solar amber styling with full High-DPI scaling.
 - **🔄 Upstream Release Checker & Live Auto-Updater**: Automatically queries GitHub for new releases from [isinternets/Dawn](https://github.com/isinternets/Dawn), compares against your local `release.json`, and offers one-click in-place update, direct ZIP download, or GitHub release viewing.
+- **💾 Save-Preserving Updates (-Update)**: Automatically detects existing player save databases (`player-state.db`), preferences (`settings.json`), identity, and custom scripts. Updates Dawn while safely carrying forward all player progress, with a fresh install toggle always available.
 - **📥 Integrated Steam Depot Downloader**: Incorporates the official [Project Sunrise](https://projectsunrise.dev/guides/installing/) download process:
   - Depot `1085661` (Game Content, Manifest `7180122903232116872`, ~75 GB)
   - Depot `1085662` (Binaries, Manifest `2210332166360342287`, ~50 MB)
@@ -116,13 +117,17 @@ If you prefer using the command line or scripting headless installations:
 .\Download-DestinyBuild.ps1 -Destination "C:\Games\Destiny 2" -SteamUsername "myaccount"
 ```
 
-### Deploy Dawn:
+### Deploy / Update Dawn:
 ```powershell
-# Standard deployment
+# Standard fresh installation (fresh profile)
 .\Install-Dawn.ps1 -GameRoot "C:\Games\Destiny 2"
+
+# Update Dawn (preserves player saves, settings, and custom scripts)
+.\Install-Dawn.ps1 -GameRoot "C:\Games\Destiny 2" -Update
 
 # Simulation / Dry Run
 .\Install-Dawn.ps1 -GameRoot "C:\Games\Destiny 2" -WhatIf
+.\Install-Dawn.ps1 -GameRoot "C:\Games\Destiny 2" -Update -WhatIf
 
 # Rollback latest backup
 .\Install-Dawn.ps1 -GameRoot "C:\Games\Destiny 2" -Restore

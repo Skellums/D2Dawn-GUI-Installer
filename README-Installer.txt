@@ -1,11 +1,11 @@
-DAWN INSTALLER & GUI GUIDE
-===========================
+DAWN INSTALLER & GUI GUIDE (v0.0.2)
+===================================
 
 OVERVIEW
 --------
 This package provides both a modern, dark-themed visual graphical user interface (GUI) 
 and scriptable command-line interfaces (CLI) to acquire Destiny 2 build 86657 via Steam
-and install the Dawn release over it.
+and install or update the Dawn release over it.
 
 No build tools, compilers, Python, or external packages are required. The GUI runs 
 natively on Windows 10 and 11 using built-in Windows PowerShell 5.1 and WPF.
@@ -15,11 +15,13 @@ QUICK START (VISUAL GUI)
 ------------------------
 1. Extract the release package completely into a folder (e.g., your Downloads folder).
 2. Ensure Destiny 2 is closed.
-3. Double-click "Install-Dawn-GUI.cmd".
+3. Double-click "DawnInstaller.exe" (or "Install-Dawn-GUI.cmd").
 4. If you already have Destiny 2 build 86657:
    - The installer automatically searches for compatible Destiny 2 installations.
    - Or click "Browse..." to select your destiny2.exe.
-   - Click "Install Dawn" to deploy the release.
+   - If an existing Dawn installation is detected, the installer automatically enables
+     "Preserve existing saves, settings, and custom scripts (-Update)".
+   - Click "Update Dawn" (or "Install Dawn" for fresh profiles) to deploy the release.
 5. If you do NOT have Destiny 2 build 86657:
    - Switch to the "Download Game Build" tab.
    - Select your desired destination directory (requires ~80-100 GB of free storage).
@@ -56,6 +58,11 @@ GUI FEATURES
 - Real-Time Console Streaming: Displays live installation progress, milestones, and hash verifications
   without freezing or blocking the UI.
 - Simulation / Dry Run: Check "Dry Run / Simulation Mode (-WhatIf)" to preview all actions safely.
+- Save Data Detection & In-Place Update (-Update):
+  * Automatically detects existing player saves (`player-state.db`), identity, preferences (`settings.json`),
+    and custom content.
+  * Preserves all save progress and preferences across version updates when checked.
+  * Checkbox can be toggled off at any time to perform a clean, fresh profile installation.
 - Backup & Rollback Manager:
   * Lists all restore points in <game>\.dawn\release-backups.
   * Shows release versions, human-readable dates, and status pills (Installed, Rolled Back, Interrupted).
@@ -67,6 +74,7 @@ GUI FEATURES
   * Automatically queries GitHub (https://github.com/isinternets/Dawn) for newer Dawn releases.
   * Displays release notification badge and banner with release notes and publish date.
   * In-place update: Automatically downloads and updates release.json, payload files, and scripts.
+  * Prompts to immediately apply the update to your configured game directory while preserving saves.
   * Save ZIP: Save the latest release archive to any location.
   * One-click manual "Check Updates" button.
 - One-Click Game Launcher: Launch Destiny 2 directly from the installer once completed.
@@ -87,12 +95,18 @@ If you prefer the command line, standalone CLI scripts are also provided:
    - PowerShell with Steam Username:
        .\Download-DestinyBuild.ps1 -Destination "C:\Games\Destiny 2" -SteamUsername "myaccount"
 
-2. Install Dawn over Game:
-   - Standard Install:
+2. Install / Update Dawn over Game:
+   - Standard Clean Install (fresh profile):
        .\Install-Dawn.ps1 -GameRoot "C:\Path\To\Destiny 2"
+
+   - Update Dawn (preserves player saves, settings, and custom scripts):
+       .\Install-Dawn.ps1 -GameRoot "C:\Path\To\Destiny 2" -Update
+       # or using upstream launcher:
+       .\Update-Dawn.cmd
 
    - Dry Run (Simulation):
        .\Install-Dawn.ps1 -GameRoot "C:\Path\To\Destiny 2" -WhatIf
+       .\Install-Dawn.ps1 -GameRoot "C:\Path\To\Destiny 2" -Update -WhatIf
 
    - Rollback Latest Backup:
        .\Install-Dawn.ps1 -GameRoot "C:\Path\To\Destiny 2" -Restore
@@ -106,9 +120,11 @@ IMPORTANT NOTES
 1. Steam Account Requirement: Destiny 2 is free on Steam, but your Steam account must have added
    Destiny 2 to its library to authorize depot downloads.
 2. Storage: The base game build requires approximately 80 to 100 GB of free disk space.
-3. Fresh Save Profile: Every installation starts a fresh profile using the release defaults.
-   Existing progress, settings, identity, and custom scripts from earlier Dawn installs are not
-   carried over, but are preserved in the backup folder.
+3. Clean Install vs. Update:
+   - Clean Install: Starts a fresh profile using release defaults. Old Dawn saves and DLLs are backed up
+     into `.dawn\release-backups`.
+   - Update Mode (-Update): Restores and carries forward your existing `player-state.db`, `settings.json`,
+     and custom scripts, ensuring you never lose your progress between Dawn versions.
 4. Isolated Directories: Old Sunrise and Restoration directories are left completely intact
    and are never imported or modified.
 5. Display Mode: The installer sets Windowed Fullscreen as the launch default in the user's

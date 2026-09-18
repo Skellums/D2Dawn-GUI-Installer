@@ -38,6 +38,7 @@ if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
         $script:DownloadScriptPath = $tempDl
     }
 }
+$script:GuiVersion           = '0.0.2'
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'
@@ -158,7 +159,7 @@ function Find-DepotDownloaderExe {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dawn Installer &amp; Steam Downloader - Destiny 2"
+        Title="Dawn Installer &amp; Steam Downloader - Destiny 2 (v0.0.2)"
         Height="960" Width="1120" MinHeight="660" MinWidth="850"
         WindowStartupLocation="CenterScreen"
         Background="#12151B" Foreground="#E2E8F0"
@@ -480,6 +481,7 @@ $xaml = @'
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Dawn Release:" Foreground="#64748B" FontSize="12" Margin="0,0,0,6"/>
@@ -494,12 +496,15 @@ $xaml = @'
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Payload Files:" Foreground="#64748B" FontSize="12" Margin="0,0,0,6"/>
                                     <TextBlock Name="LblPayloadCount" Grid.Row="2" Grid.Column="1" Text="... items" Foreground="#F1F5F9" FontSize="12"/>
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Display Default:" Foreground="#64748B" FontSize="12"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="Windowed Fullscreen (resolution &amp; settings kept)" Foreground="#F1F5F9" FontSize="12"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Display Default:" Foreground="#64748B" FontSize="12" Margin="0,0,0,6"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="Windowed Fullscreen (resolution &amp; settings kept)" Foreground="#F1F5F9" FontSize="12" Margin="0,0,0,6"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Save Data / Profile:" Foreground="#64748B" FontSize="12"/>
+                                    <TextBlock Name="LblGameProfile" Grid.Row="4" Grid.Column="1" Text="None detected (Fresh profile)" Foreground="#94A3B8" FontSize="12"/>
                                 </Grid>
 
-                                <Border Background="#13161C" CornerRadius="5" Padding="12,10" Margin="0,6,0,0">
-                                    <TextBlock Text="Notice: Every installation starts a fresh profile using release defaults. Old Dawn saves and DLLs are backed up. Your existing Sunrise/Restoration directories are untouched." FontSize="11.5" Foreground="#94A3B8" TextWrapping="Wrap"/>
+                                <Border Name="NoticeInstallMode" Background="#13161C" CornerRadius="5" Padding="12,10" Margin="0,6,0,0">
+                                    <TextBlock Name="TxtInstallNotice" Text="Notice: Every installation starts a fresh profile using release defaults. Old Dawn saves and DLLs are backed up. Your existing Sunrise/Restoration directories are untouched." FontSize="11.5" Foreground="#94A3B8" TextWrapping="Wrap"/>
                                 </Border>
                             </StackPanel>
                         </Border>
@@ -514,6 +519,7 @@ $xaml = @'
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <CheckBox Name="ChkPreserveSaves" Content="Preserve existing saves, settings, and custom scripts (-Update)" Foreground="#E2E8F0" FontWeight="SemiBold" FontSize="12.5" Margin="0,0,0,6" Visibility="Collapsed"/>
                                         <CheckBox Name="ChkWhatIf" Content="Dry Run / Simulation Mode (-WhatIf: preview changes without writing files)" Foreground="#CBD5E1" FontSize="12.5" Margin="0,0,0,6"/>
                                         <TextBlock Text="Simulates preflight, hashes, display config, and file operations safely." FontSize="11" Foreground="#64748B"/>
                                     </StackPanel>
@@ -911,6 +917,10 @@ $gameStatusText           = $window.FindName('GameStatusText')
 $lblReleaseVer            = $window.FindName('LblReleaseVer')
 $lblTargetBuild           = $window.FindName('LblTargetBuild')
 $lblPayloadCount          = $window.FindName('LblPayloadCount')
+$lblGameProfile           = $window.FindName('LblGameProfile')
+$noticeInstallMode        = $window.FindName('NoticeInstallMode')
+$txtInstallNotice         = $window.FindName('TxtInstallNotice')
+$chkPreserveSaves         = $window.FindName('ChkPreserveSaves')
 $chkWhatIf                = $window.FindName('ChkWhatIf')
 $btnInstall               = $window.FindName('BtnInstall')
 $progressContainer        = $window.FindName('ProgressContainer')
@@ -1249,8 +1259,21 @@ function Apply-DawnUpdate {
             Log-Message "[Download Dawn] Dawn release files successfully extracted and verified!"
             
             Update-GameValidation
-            
-            [System.Windows.MessageBox]::Show("Dawn $($script:ApplyTargetTag) has been successfully downloaded and set up in this directory!`n`nYou can now select your Destiny 2 folder and click 'Install Dawn'.", "Setup Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+
+            $targetGame = if ($txtGameRoot -and $txtGameRoot.Text) { $txtGameRoot.Text.Trim() } else { '' }
+            $hasExistingSaves = Test-DawnProfileExists $targetGame
+            $canApplyImmediately = $script:IsGameValid -and $hasExistingSaves -and -not $script:IsGameRunning -and -not $script:IsRunningInstaller
+
+            if ($canApplyImmediately) {
+                $prompt = [System.Windows.MessageBox]::Show("Dawn $($script:ApplyTargetTag) has been successfully downloaded and set up!`n`nExisting Dawn player saves and preferences were detected in:`n$targetGame`n`nWould you like to install the update now and preserve your saved data?", "Update Dawn Release", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
+                if ($prompt -eq [System.Windows.MessageBoxResult]::Yes) {
+                    $argsList = @("-GameRoot", "`"$targetGame`"", "-Update")
+                    Run-InstallerScript $argsList "Dawn Update"
+                    return
+                }
+            } else {
+                [System.Windows.MessageBox]::Show("Dawn $($script:ApplyTargetTag) has been successfully downloaded and set up in this directory!`n`nYou can now select your Destiny 2 folder and click 'Install Dawn' / 'Update Dawn'.", "Setup Complete", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
+            }
         } catch {
             Log-Message "[Extraction Error]: $($_.Exception.Message)"
             [System.Windows.MessageBox]::Show("Error extracting Dawn release files:`n$($_.Exception.Message)", "Extraction Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error) | Out-Null
@@ -1444,6 +1467,19 @@ function Update-BackupsList {
     }
 }
 
+function Test-DawnProfileExists([string] $Root) {
+    if (-not $Root -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
+    $runtimes = @('Dawn', 'bin/x64/Dawn')
+    foreach ($r in $runtimes) {
+        $settings = Join-Path $Root ($r + '\settings.json')
+        $db = Join-Path $Root ($r + '\player-state.db')
+        if ((Test-Path -LiteralPath $settings -PathType Leaf) -or (Test-Path -LiteralPath $db -PathType Leaf)) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Update-GameValidation {
     $path = $txtGameRoot.Text.Trim()
     $script:IsGameValid = $false
@@ -1533,11 +1569,71 @@ function Update-GameValidation {
     Update-BackupsList
 
     $releasePresent = (Test-Path -LiteralPath $script:ReleaseManifestPath) -and (Test-Path -LiteralPath $script:InstallerScriptPath)
+    $supportsUpdate = $releasePresent -and (Select-String -Path $script:InstallerScriptPath -Pattern '\[switch\]\s*\$Update' -Quiet)
+    $hasExistingProfile = Test-DawnProfileExists $path
+
+    # Check installed Dawn version from receipt if present
+    $receiptPath = Join-Path $path '.dawn\release.json'
+    $installedRel = $null
+    if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
+        try {
+            $prevJson = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+            if ($prevJson -and $prevJson.release) {
+                $installedRel = [string]$prevJson.release
+            }
+        } catch {}
+    }
+
+    if ($lblGameProfile) {
+        if ($installedRel -and $hasExistingProfile) {
+            $lblGameProfile.Text = "Installed: v$installedRel (Saves & settings present)"
+            $lblGameProfile.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 110, 231, 183))
+        } elseif ($hasExistingProfile) {
+            $lblGameProfile.Text = "Save data detected (settings.json / player-state.db)"
+            $lblGameProfile.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 110, 231, 183))
+        } else {
+            $lblGameProfile.Text = "None detected (Fresh profile)"
+            $lblGameProfile.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 148, 163, 184))
+        }
+    }
+
+    if ($hasExistingProfile -and $supportsUpdate) {
+        if ($chkPreserveSaves) {
+            $chkPreserveSaves.Visibility = [System.Windows.Visibility]::Visible
+            if ($null -eq $script:UserToggledPreserve) {
+                $chkPreserveSaves.IsChecked = $true
+            }
+        }
+    } else {
+        if ($chkPreserveSaves) {
+            $chkPreserveSaves.Visibility = [System.Windows.Visibility]::Collapsed
+            $chkPreserveSaves.IsChecked = $false
+        }
+    }
+
+    $isPreserveMode = $chkPreserveSaves -and $chkPreserveSaves.IsChecked
+
+    if ($txtInstallNotice -and $noticeInstallMode) {
+        if ($isPreserveMode) {
+            $txtInstallNotice.Text = "Save data detected: Existing player saves (player-state.db), identity, and preferences will be preserved (-Update). A rollback backup is created automatically."
+            $txtInstallNotice.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 110, 231, 183))
+            $noticeInstallMode.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 15, 35, 30))
+        } else {
+            if ($hasExistingProfile) {
+                $txtInstallNotice.Text = "Notice: Clean install will replace Dawn files and start a fresh profile. Existing saves will be backed up into .dawn/release-backups."
+            } else {
+                $txtInstallNotice.Text = "Notice: Every installation starts a fresh profile using release defaults. Old Dawn saves and DLLs are backed up. Your existing Sunrise/Restoration directories are untouched."
+            }
+            $txtInstallNotice.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 148, 163, 184))
+            $noticeInstallMode.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 19, 22, 28))
+        }
+    }
+
     if (-not $releasePresent) {
         $btnInstall.Content = "Download Dawn Release First"
         $btnInstall.IsEnabled = $true
     } else {
-        $btnInstall.Content = "Install Dawn"
+        $btnInstall.Content = if ($isPreserveMode) { "Update Dawn" } else { "Install Dawn" }
         $canInstall = ($script:IsGameValid -and -not $script:IsGameRunning -and -not $script:InterruptedBackupPath -and -not $script:IsRunningInstaller -and -not $script:IsRunningDownload)
         $btnInstall.IsEnabled = $canInstall
     }
@@ -1686,13 +1782,17 @@ if (-not `$?) {
                     } elseif ($line -like 'Game:*') {
                         $txtProgressStatus.Text = "Checking target game folder..."
                     } elseif ($line -like 'Save:*') {
-                        $txtProgressStatus.Text = "Preparing profile..."
+                        if ($line -like '*progress*' -or $line -like '*Preserving*') {
+                            $txtProgressStatus.Text = "Preserving existing Dawn saves & settings..."
+                        } else {
+                            $txtProgressStatus.Text = "Preparing profile..."
+                        }
                     } elseif ($line -like 'Display:*') {
                         $txtProgressStatus.Text = "Configuring windowed fullscreen..."
                     } elseif ($line -like 'What if:*') {
                         $txtProgressStatus.Text = "Simulating operations (WhatIf)..."
-                    } elseif ($line -like 'Installed Dawn*') {
-                        $txtProgressStatus.Text = "Installation finished!"
+                    } elseif ($line -like 'Installed Dawn*' -or $line -like 'Updated Dawn*') {
+                        $txtProgressStatus.Text = "Deployment finished!"
                     } elseif ($line -like 'Restored.*') {
                         $txtProgressStatus.Text = "Restoration finished!"
                     }
@@ -2269,13 +2369,29 @@ $btnInstall.add_Click({
 
     $gameRoot = $txtGameRoot.Text.Trim()
     $argsList = @("-GameRoot", "`"$gameRoot`"")
+    $isUpdate = $chkPreserveSaves -and $chkPreserveSaves.IsChecked
+    if ($isUpdate) {
+        $argsList += "-Update"
+    }
     if ($chkWhatIf.IsChecked) {
         $argsList += "-WhatIf"
     }
 
-    $opName = if ($chkWhatIf.IsChecked) { "Simulation (WhatIf)" } else { "Installation" }
+    $opName = if ($chkWhatIf.IsChecked) {
+        if ($isUpdate) { "Update Simulation (WhatIf)" } else { "Installation Simulation (WhatIf)" }
+    } else {
+        if ($isUpdate) { "Dawn Update" } else { "Dawn Installation" }
+    }
     Run-InstallerScript $argsList $opName
 })
+
+# Preserve Saves Checkbox Toggled
+if ($chkPreserveSaves) {
+    $chkPreserveSaves.add_Click({
+        $script:UserToggledPreserve = $true
+        Update-GameValidation
+    })
+}
 
 # Download Tab: Target Directory Changed
 $txtDownloadDir.add_TextChanged({
@@ -2528,7 +2644,7 @@ $window.add_Loaded({
         }
 
         $procTimer.Start()
-        Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Dawn Installer & Downloader GUI initialized."
+        Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Dawn Installer & Downloader GUI (v$script:GuiVersion) initialized."
         if ($script:LogFilePath) {
             $logFileName = [System.IO.Path]::GetFileName($script:LogFilePath)
             if ($txtLogFileLabel) {
