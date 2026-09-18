@@ -13,6 +13,7 @@ tools/
 # Runtime & backup data
 dist/
 DawnTest/
+package-release.ps1
 .dawn/
 *.log
 .vs/
