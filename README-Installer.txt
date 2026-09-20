@@ -1,4 +1,4 @@
-DAWN INSTALLER & GUI GUIDE (v0.0.3)
+DAWN INSTALLER & GUI GUIDE (v0.0.4)
 ===================================
 
 OVERVIEW
@@ -76,6 +76,11 @@ GUI FEATURES
   * Prompts to immediately apply the update to your configured game directory while preserving saves.
   * Save ZIP: Save the latest release archive to any location.
   * One-click manual "Check Updates" button.
+- GUI Installer Self-Update Checker:
+  * Automatically checks GitHub (https://github.com/Skellums/D2Dawn-GUI-Installer) for newer GUI installer releases.
+  * Displays a purple "GUI Update" notification badge and alert banner.
+  * "Open Release Page" button takes you directly to the latest release on GitHub to download updates.
+  * "Check Updates" checks both Dawn upstream and the GUI installer simultaneously.
 - One-Click Game Launcher: Launch Destiny 2 directly from the installer once completed.
 - Log Tools: One-click "Copy Log" to clipboard for easy troubleshooting and support.
 

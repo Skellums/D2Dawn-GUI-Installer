@@ -36,11 +36,13 @@ if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
     $tempDl = Join-Path ([System.IO.Path]::GetTempPath()) 'Download-DestinyBuild.ps1'
     if (Test-Path -LiteralPath $tempDl) {
         $script:DownloadScriptPath = $tempDl
+    }
+}
 # ==============================================================================
 # Dawn GUI Installer Version Configuration
 # Update this single variable for new releases; Build and Package scripts read this value.
 # ==============================================================================
-$script:GuiVersion           = '0.0.3'
+$script:GuiVersion           = '0.0.4'
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'
@@ -289,13 +291,16 @@ $xaml = @'
                         <Border Name="HeaderUpdateBadge" Visibility="Collapsed" Background="#0C4A6E" BorderBrush="#0284C7" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand" ToolTip="Click to view update details">
                             <TextBlock Name="HeaderUpdateBadgeText" Text="Update Available" FontSize="11" FontWeight="Bold" Foreground="#38BDF8"/>
                         </Border>
+                        <Border Name="HeaderGuiUpdateBadge" Visibility="Collapsed" Background="#3B1C48" BorderBrush="#A855F7" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand" ToolTip="Click to view new Dawn GUI Installer release">
+                            <TextBlock Name="HeaderGuiUpdateBadgeText" Text="GUI Update" FontSize="11" FontWeight="Bold" Foreground="#E9D5FF"/>
+                        </Border>
                     </StackPanel>
                     <TextBlock Text="Destiny 2 Build 86657 &#x2022; Release Deployer &amp; Steam Depot Downloader" FontSize="12" Foreground="#94A3B8" Margin="0,3,0,0"/>
                 </StackPanel>
 
                 <!-- Header Action: Launch Game & Check Updates -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Name="BtnCheckUpdates" Style="{StaticResource StandardBtn}" Content="&#x21BA; Check Updates" ToolTip="Check for newer Dawn releases on GitHub" Margin="0,0,8,0"/>
+                    <Button Name="BtnCheckUpdates" Style="{StaticResource StandardBtn}" Content="&#x21BA; Check Updates" ToolTip="Check for newer Dawn and GUI installer releases on GitHub" Margin="0,0,8,0"/>
                     <Button Name="BtnLaunchGame" Style="{StaticResource StandardBtn}" Content="&#x25B6; Launch Destiny 2" ToolTip="Launch destiny2.exe in selected game folder" Margin="0,0,0,0"/>
                 </StackPanel>
             </Grid>
@@ -342,6 +347,29 @@ $xaml = @'
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                                     <Button Name="BtnForceDownloadDawn" Style="{StaticResource PrimaryBtn}" Content="&#x2B07; Download Dawn Release" Height="36" Padding="14,6"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- GUI INSTALLER APP UPDATE ALERT -->
+                        <Border Name="BannerGuiUpdateAvailable" Visibility="Collapsed" Background="#241432" BorderBrush="#A855F7" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#x2191; Dawn GUI Installer Update Available" FontWeight="Bold" FontSize="13.5" Foreground="#E9D5FF"/>
+                                        <Border Background="#581C87" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Name="TxtGuiUpdateVersionTag" Text="v..." FontSize="11" FontWeight="Bold" Foreground="#F3E8FF"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Name="TxtGuiUpdateReleaseDetails" Text="A newer version of the Dawn GUI Installer was found on GitHub." FontSize="12" Foreground="#DDD6FE" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <Button Name="BtnGuiUpdateViewRelease" Style="{StaticResource PrimaryBtn}" Content="Open Release Page &#x2197;" Height="32" Padding="12,4" Margin="0,0,8,0"/>
+                                    <Button Name="BtnDismissGuiUpdate" Style="{StaticResource StandardBtn}" Content="&#x2715;" ToolTip="Dismiss this notification" Width="28" Height="32" Padding="0"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -849,6 +877,15 @@ $btnCheckUpdatesInline     = $window.FindName('BtnCheckUpdatesInline')
 $btnCheckUpdatesGuide      = $window.FindName('BtnCheckUpdatesGuide')
 $btnOpenDawnRepo           = $window.FindName('BtnOpenDawnRepo')
 
+# Control References - GUI App Updates
+$headerGuiUpdateBadge       = $window.FindName('HeaderGuiUpdateBadge')
+$headerGuiUpdateBadgeText   = $window.FindName('HeaderGuiUpdateBadgeText')
+$bannerGuiUpdateAvailable   = $window.FindName('BannerGuiUpdateAvailable')
+$txtGuiUpdateVersionTag     = $window.FindName('TxtGuiUpdateVersionTag')
+$txtGuiUpdateReleaseDetails = $window.FindName('TxtGuiUpdateReleaseDetails')
+$btnGuiUpdateViewRelease    = $window.FindName('BtnGuiUpdateViewRelease')
+$btnDismissGuiUpdate        = $window.FindName('BtnDismissGuiUpdate')
+
 # Control References - Install Tab
 $alertInterruptedBox      = $window.FindName('AlertInterruptedBox')
 $alertInterruptedText     = $window.FindName('AlertInterruptedText')
@@ -917,6 +954,13 @@ $script:IsRunningInstaller     = $false
 $script:IsRunningDownload      = $false
 $script:DawnReleasesApi        = 'https://api.github.com/repos/isinternets/Dawn/releases'
 $script:DawnRepoUrl            = 'https://github.com/isinternets/Dawn'
+$script:GuiReleasesApi         = 'https://api.github.com/repos/Skellums/D2Dawn-GUI-Installer/releases'
+$script:GuiRepoUrl             = 'https://github.com/Skellums/D2Dawn-GUI-Installer'
+$script:LatestGuiReleaseUrl    = 'https://github.com/Skellums/D2Dawn-GUI-Installer/releases/latest'
+$script:LatestGuiReleaseTag    = $null
+$script:IsCheckingGuiUpdates   = $false
+$script:GuiUpdateRunspace      = $null
+$script:GuiUpdateAsyncResult   = $null
 $script:LatestRelease          = $null
 $script:IsCheckingUpdates      = $false
 $script:UpdateRunspace         = $null
@@ -957,13 +1001,14 @@ function Load-ReleaseManifest {
 function Parse-NormVersion([string] $v) {
     if ([string]::IsNullOrWhiteSpace($v)) { return [version]'0.0.0' }
     $clean = ($v -replace '^[vV]', '' -split '[-+]')[0]
-    $parts = @($clean -split '\.') | ForEach-Object {
+    $nums = New-Object System.Collections.Generic.List[int]
+    foreach ($segment in ($clean -split '\.')) {
         $val = 0
-        [int]::TryParse(($_ -replace '\D', ''), [ref]$val) | Out-Null
-        $val
+        [int]::TryParse(($segment -replace '\D', ''), [ref]$val) | Out-Null
+        $nums.Add($val)
     }
-    while ($parts.Count -lt 3) { $parts += 0 }
-    return [version]("$($parts[0]).$($parts[1]).$($parts[2])")
+    while ($nums.Count -lt 3) { $nums.Add(0) }
+    return New-Object System.Version($nums[0], $nums[1], $nums[2])
 }
 
 function Compare-DawnVersions([string] $LocalVer, [string] $RemoteVer) {
@@ -1103,6 +1148,95 @@ function Check-DawnUpdates([switch] $Interactive, [switch] $AutoPromptDownload) 
         }
     })
     $checkTimer.Start()
+}
+
+function Check-GuiUpdates([switch] $Interactive) {
+    if ($script:IsCheckingGuiUpdates) { return }
+    $script:IsCheckingGuiUpdates = $true
+    
+    if ($Interactive) { Log-Message "[Check GUI Updates] Checking for GUI installer updates on GitHub..." }
+    
+    $script:GuiUpdateRunspace = [powershell]::Create().AddScript({
+        param($apiUrl)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        try {
+            $headers = @{ 'User-Agent' = 'Dawn-GUI-Installer' }
+            $releases = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 10
+            return @{ Success = $true; Releases = $releases }
+        } catch {
+            return @{ Success = $false; Error = $_.Exception.Message }
+        }
+    }).AddParameter('apiUrl', $script:GuiReleasesApi)
+    
+    $script:GuiUpdateAsyncResult = $script:GuiUpdateRunspace.BeginInvoke()
+    
+    $guiTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $guiTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+    $guiTimer.add_Tick({
+        param($sender, $e)
+        if (-not $script:GuiUpdateAsyncResult -or -not $script:GuiUpdateAsyncResult.IsCompleted) { return }
+        $sender.Stop()
+        
+        try {
+            $output = $script:GuiUpdateRunspace.EndInvoke($script:GuiUpdateAsyncResult)
+            $script:GuiUpdateRunspace.Dispose()
+            $script:GuiUpdateRunspace = $null
+            $script:GuiUpdateAsyncResult = $null
+            $res = $output[0]
+            
+            if (-not $res.Success) {
+                if ($Interactive) {
+                    Log-Message "[Check GUI Updates] Error: $($res.Error)"
+                }
+                return
+            }
+            
+            $releases = $res.Releases
+            $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+            if (-not $latest) { return }
+            
+            $latestTag = $latest.tag_name
+            $latestClean = $latestTag -replace '^[vV]', ''
+            $currentVer = $script:GuiVersion
+            
+            $cmp = Compare-DawnVersions $currentVer $latestClean
+            $relName = if ($latest.name) { $latest.name } else { $latestTag }
+            $pubDate = if ($latest.published_at) { (Get-Date $latest.published_at).ToString('yyyy-MM-dd') } else { '' }
+            $relUrl = if ($latest.html_url) { $latest.html_url } else { $script:LatestGuiReleaseUrl }
+            $script:LatestGuiReleaseUrl = $relUrl
+            $script:LatestGuiReleaseTag = $latestTag
+            
+            if ($cmp -lt 0) {
+                if ($bannerGuiUpdateAvailable) { $bannerGuiUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible }
+                if ($headerGuiUpdateBadge) { $headerGuiUpdateBadge.Visibility = [System.Windows.Visibility]::Visible }
+                if ($headerGuiUpdateBadgeText) { $headerGuiUpdateBadgeText.Text = "Installer Update: $latestTag" }
+                if ($txtGuiUpdateVersionTag) { $txtGuiUpdateVersionTag.Text = $latestTag }
+                if ($txtGuiUpdateReleaseDetails) {
+                    $txtGuiUpdateReleaseDetails.Text = "A newer version of the Dawn GUI Installer is available on GitHub: $relName ($pubDate). You currently have v$currentVer. Click 'Open Release Page' to view and download the update."
+                }
+                
+                Log-Message "[Check GUI Updates] Newer Dawn GUI Installer available: $latestTag ($relName)"
+                
+                if ($Interactive) {
+                    $prompt = [System.Windows.MessageBox]::Show("A newer version of the Dawn GUI Installer was found on GitHub!`n`nLatest: $latestTag ($relName)`nCurrent: v$currentVer`n`nWould you like to open the release page in your browser?", "GUI Installer Update Available", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Information)
+                    if ($prompt -eq [System.Windows.MessageBoxResult]::Yes) {
+                        Start-Process $relUrl
+                    }
+                }
+            } else {
+                if ($bannerGuiUpdateAvailable) { $bannerGuiUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed }
+                if ($headerGuiUpdateBadge) { $headerGuiUpdateBadge.Visibility = [System.Windows.Visibility]::Collapsed }
+                if ($Interactive) {
+                    Log-Message "[Check GUI Updates] Dawn GUI Installer is up to date (v$currentVer)."
+                }
+            }
+        } catch {
+            Log-Message "[Check GUI Updates Error]: $($_.Exception.Message)"
+        } finally {
+            $script:IsCheckingGuiUpdates = $false
+        }
+    })
+    $guiTimer.Start()
 }
 
 function Apply-DawnUpdate {
@@ -2505,18 +2639,35 @@ $btnClearLog.add_Click({
 
 # --- Update System Event Handlers ---
 if ($btnCheckUpdates) {
-    $btnCheckUpdates.add_Click({ Check-DawnUpdates -Interactive })
+    $btnCheckUpdates.add_Click({
+        Check-DawnUpdates -Interactive
+        Check-GuiUpdates -Interactive
+    })
 }
 if ($btnCheckUpdatesInline) {
-    $btnCheckUpdatesInline.add_Click({ Check-DawnUpdates -Interactive })
+    $btnCheckUpdatesInline.add_Click({
+        Check-DawnUpdates -Interactive
+        Check-GuiUpdates -Interactive
+    })
 }
 if ($btnCheckUpdatesGuide) {
-    $btnCheckUpdatesGuide.add_Click({ Check-DawnUpdates -Interactive })
+    $btnCheckUpdatesGuide.add_Click({
+        Check-DawnUpdates -Interactive
+        Check-GuiUpdates -Interactive
+    })
 }
 if ($headerUpdateBadge) {
     $headerUpdateBadge.add_MouseLeftButtonDown({
         $mainTabs.SelectedItem = $tabInstall
         $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible
+    })
+}
+if ($headerGuiUpdateBadge) {
+    $headerGuiUpdateBadge.add_MouseLeftButtonDown({
+        $mainTabs.SelectedItem = $tabInstall
+        if ($bannerGuiUpdateAvailable) {
+            $bannerGuiUpdateAvailable.Visibility = [System.Windows.Visibility]::Visible
+        }
     })
 }
 if ($btnUpdateApply) {
@@ -2534,6 +2685,15 @@ if ($btnUpdateViewRelease) {
         }
     })
 }
+if ($btnGuiUpdateViewRelease) {
+    $btnGuiUpdateViewRelease.add_Click({
+        if ($script:LatestGuiReleaseUrl) {
+            Start-Process $script:LatestGuiReleaseUrl
+        } else {
+            Start-Process $script:GuiRepoUrl
+        }
+    })
+}
 if ($btnOpenDawnRepo) {
     $btnOpenDawnRepo.add_Click({ Start-Process $script:DawnRepoUrl })
 }
@@ -2543,6 +2703,13 @@ if ($btnForceDownloadDawn) {
 if ($btnDismissUpdate) {
     $btnDismissUpdate.add_Click({
         $bannerUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+    })
+}
+if ($btnDismissGuiUpdate) {
+    $btnDismissGuiUpdate.add_Click({
+        if ($bannerGuiUpdateAvailable) {
+            $bannerGuiUpdateAvailable.Visibility = [System.Windows.Visibility]::Collapsed
+        }
     })
 }
 
@@ -2618,6 +2785,9 @@ $window.add_Loaded({
         } else {
             Check-DawnUpdates
         }
+
+        # Check for Dawn GUI Installer updates asynchronously
+        Check-GuiUpdates
     } catch {
         try {
             Log-Message "[ERROR in startup]: $($_.Exception.Message)"

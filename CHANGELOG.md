@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.0.4] - 2026-09-20
+
+### 🌟 Added
+- **GUI Installer Self-Update Checker**:
+  - Automatically queries GitHub (`Skellums/D2Dawn-GUI-Installer`) for newer versions of the GUI installer asynchronously in the background without blocking the UI.
+  - Displays a distinct purple "GUI Update" notification badge in the header bar and a dedicated update alert banner in the primary Install tab when an update is available.
+  - Includes an **"Open Release Page ↗"** button that opens the latest GitHub release in your default web browser for safe, direct downloading.
+  - Clicking **"Check Updates"** now performs a dual update check for both upstream Dawn releases and GUI installer releases simultaneously.
+
+---
+
 ## [v0.0.3] - 2026-09-20
 
 ### 🛠️ Changed
