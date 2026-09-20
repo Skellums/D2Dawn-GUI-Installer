@@ -38,7 +38,7 @@ if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
         $script:DownloadScriptPath = $tempDl
     }
 }
-$script:GuiVersion           = '0.0.2'
+$script:GuiVersion           = '0.0.3'
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'
@@ -70,60 +70,6 @@ function Save-UserSettings([string] $GameRoot, [string] $DownloadDir, [string] $
         $json = ConvertTo-Json -InputObject $obj -Compress
         [System.IO.File]::WriteAllText($script:SettingsFile, $json, [System.Text.Encoding]::UTF8)
     } catch {}
-}
-
-# --- Game Directory Auto-Detection ---
-function Find-DestinyGameDirectory {
-    $candidates = New-Object System.Collections.Generic.List[string]
-
-    $saved = Get-SavedSettings
-    if ($saved -and $saved.PSObject.Properties['LastGameRoot'] -and $saved.LastGameRoot) {
-        $candidates.Add($saved.LastGameRoot)
-    }
-
-    $candidates.Add((Join-Path $script:ScriptDir '..\Sunrise'))
-    $candidates.Add((Join-Path $script:ScriptDir '..\Destiny 2'))
-    $candidates.Add((Join-Path $script:ScriptDir '..\Destiny2'))
-    $candidates.Add((Join-Path $script:ScriptDir '..'))
-
-    try {
-        $steamKey = Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamPath' -ErrorAction SilentlyContinue
-        if ($steamKey -and $steamKey.SteamPath) {
-            $steamRoot = $steamKey.SteamPath
-            $candidates.Add((Join-Path $steamRoot 'steamapps\common\Destiny 2'))
-
-            $vdf = Join-Path $steamRoot 'steamapps\libraryfolders.vdf'
-            if (Test-Path -LiteralPath $vdf) {
-                $content = Get-Content -LiteralPath $vdf -Raw
-                $regexMatches = [regex]::Matches($content, '"path"\s+"([^"]+)"')
-                foreach ($m in $regexMatches) {
-                    $libPath = $m.Groups[1].Value.Replace('\\', '\')
-                    $candidates.Add((Join-Path $libPath 'steamapps\common\Destiny 2'))
-                }
-            }
-        }
-    } catch {}
-
-    foreach ($drive in @('C', 'D', 'E', 'F', 'G', 'W')) {
-        $candidates.Add("$drive`:\Games\Destiny 2")
-        $candidates.Add("$drive`:\Games\Sunrise")
-        $candidates.Add("$drive`:\Program Files (x86)\Steam\steamapps\common\Destiny 2")
-    }
-
-    foreach ($path in $candidates) {
-        if ([string]::IsNullOrWhiteSpace($path)) { continue }
-        try {
-            $resolved = [System.IO.Path]::GetFullPath($path).TrimEnd('\', '/')
-            $exe = Join-Path $resolved 'destiny2.exe'
-            if (Test-Path -LiteralPath $exe -PathType Leaf) {
-                $ver = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
-                if ($ver -eq $script:ExpectedFileVersion) {
-                    return $resolved
-                }
-            }
-        } catch {}
-    }
-    return $null
 }
 
 # --- DepotDownloader Tool Finder / Extractor ---
@@ -159,7 +105,7 @@ function Find-DepotDownloaderExe {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dawn Installer &amp; Steam Downloader - Destiny 2 (v0.0.2)"
+        Title="Dawn Installer &amp; Steam Downloader - Destiny 2 (v0.0.3)"
         Height="960" Width="1120" MinHeight="660" MinWidth="850"
         WindowStartupLocation="CenterScreen"
         Background="#12151B" Foreground="#E2E8F0"
@@ -448,12 +394,10 @@ $xaml = @'
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
                                     <TextBox Name="TxtGameRoot" Grid.Column="0" Background="#12151B" Foreground="#F8FAFC" BorderBrush="#384252" BorderThickness="1" FontSize="13" Padding="10,8" VerticalContentAlignment="Center" Margin="0,0,8,0"/>
-                                    <Button Name="BtnBrowse" Grid.Column="1" Style="{StaticResource StandardBtn}" Content="Browse..." Margin="0,0,8,0"/>
-                                    <Button Name="BtnAutoDetect" Grid.Column="2" Style="{StaticResource StandardBtn}" Content="Auto-Detect"/>
+                                    <Button Name="BtnBrowse" Grid.Column="1" Style="{StaticResource StandardBtn}" Content="Browse..."/>
                                 </Grid>
 
                                 <!-- Game Validation Status Pill -->
@@ -910,7 +854,6 @@ $bannerNeedDownload       = $window.FindName('BannerNeedDownload')
 $btnGoToDownloadTab       = $window.FindName('BtnGoToDownloadTab')
 $txtGameRoot              = $window.FindName('TxtGameRoot')
 $btnBrowse                = $window.FindName('BtnBrowse')
-$btnAutoDetect            = $window.FindName('BtnAutoDetect')
 $gameStatusBorder         = $window.FindName('GameStatusBorder')
 $gameStatusIcon           = $window.FindName('GameStatusIcon')
 $gameStatusText           = $window.FindName('GameStatusText')
@@ -1356,8 +1299,15 @@ function Update-DownloadDiskSpace {
     try {
         $fullPath = [System.IO.Path]::GetFullPath($dir)
         $root = [System.IO.Path]::GetPathRoot($fullPath)
-        if (-not $root) { return }
+        if (-not $root) {
+            $downloadSpaceBorder.Visibility = [System.Windows.Visibility]::Collapsed
+            return
+        }
         $drive = New-Object System.IO.DriveInfo($root)
+        if (-not $drive.IsReady) {
+            $downloadSpaceBorder.Visibility = [System.Windows.Visibility]::Collapsed
+            return
+        }
         $freeGB = [math]::Round($drive.AvailableFreeSpace / 1GB, 1)
 
         $downloadSpaceBorder.Visibility = [System.Windows.Visibility]::Visible
@@ -1468,14 +1418,19 @@ function Update-BackupsList {
 }
 
 function Test-DawnProfileExists([string] $Root) {
-    if (-not $Root -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
-    $runtimes = @('Dawn', 'bin/x64/Dawn')
-    foreach ($r in $runtimes) {
-        $settings = Join-Path $Root ($r + '\settings.json')
-        $db = Join-Path $Root ($r + '\player-state.db')
-        if ((Test-Path -LiteralPath $settings -PathType Leaf) -or (Test-Path -LiteralPath $db -PathType Leaf)) {
-            return $true
+    if (-not $Root) { return $false }
+    try {
+        if (-not (Test-Path -LiteralPath $Root -PathType Container -ErrorAction SilentlyContinue)) { return $false }
+        $runtimes = @('Dawn', 'bin/x64/Dawn')
+        foreach ($r in $runtimes) {
+            $settings = Join-Path $Root ($r + '\settings.json')
+            $db = Join-Path $Root ($r + '\player-state.db')
+            if ((Test-Path -LiteralPath $settings -PathType Leaf -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $db -PathType Leaf -ErrorAction SilentlyContinue)) {
+                return $true
+            }
         }
+    } catch {
+        return $false
     }
     return $false
 }
@@ -1498,7 +1453,12 @@ function Update-GameValidation {
         return
     }
 
-    if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+    $folderExists = $false
+    try {
+        $folderExists = Test-Path -LiteralPath $path -PathType Container -ErrorAction SilentlyContinue
+    } catch {}
+
+    if (-not $folderExists) {
         $gameStatusBorder.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 59, 28, 28))
         $gameStatusBorder.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 220, 38, 38))
         $gameStatusIcon.Text = [char]0x2715
@@ -1513,7 +1473,12 @@ function Update-GameValidation {
     }
 
     $exePath = Join-Path $path 'destiny2.exe'
-    if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
+    $exeExists = $false
+    try {
+        $exeExists = Test-Path -LiteralPath $exePath -PathType Leaf -ErrorAction SilentlyContinue
+    } catch {}
+
+    if (-not $exeExists) {
         $gameStatusBorder.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 59, 28, 28))
         $gameStatusBorder.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 220, 38, 38))
         $gameStatusIcon.Text = [char]0x2715
@@ -1653,7 +1618,6 @@ function Run-InstallerScript([string[]] $ScriptArguments, [string] $OperationTit
     $btnRestore.IsEnabled = $false
     $btnRecoverInterrupted.IsEnabled = $false
     $btnBrowse.IsEnabled = $false
-    $btnAutoDetect.IsEnabled = $false
     $btnLaunchGame.IsEnabled = $false
     $btnStartDownload.IsEnabled = $false
     $txtGameRoot.IsEnabled = $false
@@ -1827,7 +1791,6 @@ if (-not `$?) {
                 $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
                 $txtGameRoot.IsEnabled = $true
                 $btnBrowse.IsEnabled = $true
-                $btnAutoDetect.IsEnabled = $true
                 $btnStartDownload.IsEnabled = $true
 
                 $opTitle = $script:InstallOpTitle
@@ -1858,7 +1821,6 @@ if (-not `$?) {
             $progressContainer.Visibility = [System.Windows.Visibility]::Collapsed
             $txtGameRoot.IsEnabled = $true
             $btnBrowse.IsEnabled = $true
-            $btnAutoDetect.IsEnabled = $true
             $btnStartDownload.IsEnabled = $true
             Update-GameValidation
         }
@@ -2326,26 +2288,13 @@ $btnBrowse.add_Click({
     $dlg.Filter = "Destiny 2 (destiny2.exe)|destiny2.exe|All Executables (*.exe)|*.exe|All Files (*.*)|*.*"
     $dlg.FileName = "destiny2.exe"
 
-    if ($txtGameRoot.Text -and (Test-Path -LiteralPath $txtGameRoot.Text)) {
+    if ($txtGameRoot.Text -and (Test-Path -LiteralPath $txtGameRoot.Text -ErrorAction SilentlyContinue)) {
         $dlg.InitialDirectory = $txtGameRoot.Text
     }
 
     if ($dlg.ShowDialog() -eq $true) {
         $folder = [System.IO.Path]::GetDirectoryName($dlg.FileName)
         $txtGameRoot.Text = $folder
-    }
-})
-
-# Auto-Detect Button
-$btnAutoDetect.add_Click({
-    Set-StatusText "Searching for Destiny 2 installation..."
-    $detected = Find-DestinyGameDirectory
-    if ($detected) {
-        $txtGameRoot.Text = $detected
-        Set-StatusText "Found valid Destiny 2 directory: $detected"
-    } else {
-        Set-StatusText "Could not automatically locate a compatible Destiny 2 installation."
-        [System.Windows.MessageBox]::Show("Could not find a Destiny 2 directory matching build $script:ExpectedFileVersion.`nYou can download it via the 'Download Game Build' tab.", "Auto-Detect", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information) | Out-Null
     }
 })
 
@@ -2636,12 +2585,14 @@ $window.add_Loaded({
 
         Update-DownloadDiskSpace
 
-        $initialPath = Find-DestinyGameDirectory
-        if ($initialPath) {
-            $txtGameRoot.Text = $initialPath
-        } else {
-            Update-GameValidation
+        if ($saved -and $saved.PSObject.Properties['LastGameRoot'] -and $saved.LastGameRoot) {
+            try {
+                if (Test-Path -LiteralPath $saved.LastGameRoot -PathType Container -ErrorAction SilentlyContinue) {
+                    $txtGameRoot.Text = $saved.LastGameRoot
+                }
+            } catch {}
         }
+        Update-GameValidation
 
         $procTimer.Start()
         Log-Message "[$(Get-Date -Format 'HH:mm:ss')] Dawn Installer & Downloader GUI (v$script:GuiVersion) initialized."

@@ -125,7 +125,7 @@ $ps2exeParams = @{
     company     = "Project Sunrise / Dawn Community"
     product     = "Dawn Installer"
     copyright   = "GNU General Public License v3.0"
-    version     = "0.0.2.0"
+    version     = "0.0.3.0"
 }
 
 if ($icoPath -and (Test-Path -LiteralPath $icoPath)) {

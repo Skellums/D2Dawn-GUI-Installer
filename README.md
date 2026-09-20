@@ -26,8 +26,7 @@ Built entirely using native **Windows PowerShell 5.1** and **WPF (XAML)**, it re
 - **📥 Integrated Steam Depot Downloader**: Incorporates the official [Project Sunrise](https://projectsunrise.dev/guides/installing/) download process:
   - Depot `1085661` (Game Content, Manifest `7180122903232116872`, ~75 GB)
   - Depot `1085662` (Binaries, Manifest `2210332166360342287`, ~50 MB)
-- **📱 Steam QR Code Authentication**: Login securely using your Steam Mobile App without typing credentials into the console. Saved session / password login is also supported.
-- **🔍 Automated Game Detection**: Automatically searches Steam library paths across all local drives and adjacent directories for compatible Destiny 2 installations.
+- **📁 Simple Folder Selection & Validation**: Browse directly to your downloaded Destiny 2 Build 86657 directory (or download it directly within the GUI via Steam DepotDownloader). Remembers your selected folder across sessions.
 - **🛡️ Pre-Flight Validation**: Verifies `destiny2.exe` presence, file version (`86657.20.08.23.1800.d2_rc`), and write permissions.
 - **⏱️ Live Process Watcher**: Monitors `destiny2.exe` execution in real time to prevent file collisions during installation or rollback.
 - **🔄 Backup & Rollback Manager**: Browse historical release restore points in `<game>/.dawn/release-backups`, inspect installed versions and dates, and restore any backup with one click.

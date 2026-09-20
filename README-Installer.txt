@@ -1,4 +1,4 @@
-DAWN INSTALLER & GUI GUIDE (v0.0.2)
+DAWN INSTALLER & GUI GUIDE (v0.0.3)
 ===================================
 
 OVERVIEW
@@ -17,8 +17,7 @@ QUICK START (VISUAL GUI)
 2. Ensure Destiny 2 is closed.
 3. Double-click "DawnInstaller.exe" (or "Install-Dawn-GUI.cmd").
 4. If you already have Destiny 2 build 86657:
-   - The installer automatically searches for compatible Destiny 2 installations.
-   - Or click "Browse..." to select your destiny2.exe.
+   - Click "Browse..." to select your destiny2.exe (or type/paste your game folder path).
    - If an existing Dawn installation is detected, the installer automatically enables
      "Preserve existing saves, settings, and custom scripts (-Update)".
    - Click "Update Dawn" (or "Install Dawn" for fresh profiles) to deploy the release.
@@ -51,8 +50,8 @@ GUI FEATURES
 ------------
 - Modern Destiny/Dawn Theme: Dark gunmetal and Solar amber styling with full High-DPI support.
 - Built-in Steam Depot Downloader: Download the required Destiny 2 build directly in the GUI.
-- Game Auto-Detection: Automatically scans sibling game directories, Steam libraries across
-  all configured drives, and previous sessions.
+- Game Folder Selection & Session Memory: Easily browse to your Destiny 2 build 86657 folder,
+  with previous directory selection safely remembered across sessions.
 - Pre-Flight Validation: Verifies that destiny2.exe exists and matches build 86657.20.08.23.1800.d2_rc.
 - Live Process Watcher: Detects if Destiny 2 is running and prevents concurrent modifications.
 - Real-Time Console Streaming: Displays live installation progress, milestones, and hash verifications

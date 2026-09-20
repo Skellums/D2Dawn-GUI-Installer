@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.0.3] - 2026-09-20
+
+### 🛠️ Changed
+- **Folder Selection & Universal Portability**:
+  - Removed personalized automatic drive scanning and Steam registry checks (`Find-DestinyGameDirectory`) to ensure portability across different PC configurations.
+  - Removed the "Auto-Detect" button from the main Install tab. Users choose their game folder cleanly via the **Browse...** button or by downloading build 86657 directly via the integrated **Download Game Build** tab.
+  - Previous game folder selections continue to be remembered across sessions on each machine via local user settings.
+
+### 🐛 Fixed
+- **Silent & Defensive Path Validation**:
+  - Added strict error suppression and `DriveInfo.IsReady` checks for drive and path verifications across all tabs.
+  - Systems lacking specific drive letters (e.g. secondary drives or network shares) will no longer emit drive lookup errors or console noise.
+
+---
+
 ## [v0.0.2] - 2026-09-18
 
 ### 🌟 Added
@@ -59,5 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[v0.0.3]: https://github.com/Skellums/D2Dawn-GUI-Installer/compare/v0.0.2...v0.0.3
 [v0.0.2]: https://github.com/Skellums/D2Dawn-GUI-Installer/compare/v0.0.1-alpha...v0.0.2
 [v0.0.1-alpha]: https://github.com/Skellums/D2Dawn-GUI-Installer/releases/tag/v0.0.1-alpha
