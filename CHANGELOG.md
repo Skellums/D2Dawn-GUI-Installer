@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.0.5] - 2026-09-20
+
+### 🛡️ Added
+- **DepotDownloader Auto-Retry & Resumption Loop**:
+  - Wrapped depot downloads in an automated retry engine (up to 5 attempts) in `Download-DestinyBuild.ps1` to seamlessly recover from transient Steam CDN disconnections (`Lost connection to Steam. Reconnecting` and `A task was canceled`).
+  - Automatically resumes verified chunks without re-downloading completed game packages.
+  - Reuses authenticated session tokens and saved usernames across retries, avoiding duplicate QR code scans.
+- **Process Guard & Mutual Exclusion**:
+  - Automatically terminates stale or lingering background `DepotDownloader.exe` instances before starting a new download, preventing concurrent write collisions.
+  - Added process cleanup hooks on download cancellation, on external terminal completion, and on application window close.
+- **File Lock Release Cooldown**:
+  - Added a 5-second backoff between retries to allow Windows Defender, antivirus scanners, and filesystem handles to clear on multi-gigabyte `.pkg` files (preventing `System.IO.IOException: The process cannot access the file because it is being used by another process`).
+- **Real-Time Reconnection Feedback**:
+  - Live console stream parser now detects connection interruptions and recovery states, displaying informative status updates in the GUI progress bar.
+
+---
+
 ## [v0.0.4] - 2026-09-20
 
 ### 🌟 Added

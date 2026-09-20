@@ -1,4 +1,4 @@
-DAWN INSTALLER & GUI GUIDE (v0.0.4)
+DAWN INSTALLER & GUI GUIDE (v0.0.5)
 ===================================
 
 OVERVIEW
@@ -42,6 +42,8 @@ The installer incorporates the Project Sunrise Steam Depot Downloader workflow
 - Supports Steam Mobile App QR login or username/password authentication.
 - Automatically saves login credentials (-remember-password) so only one authentication is needed.
 - Resumable: If a download is paused or interrupted, running it again resumes where it left off.
+- Auto-Retry & Recovery: Automatically catches transient Steam connection drops and retries with backoff.
+- Process Guard: Terminates stale background instances and prevents concurrent download file-lock collisions.
 - Live disk space calculator warns if available storage is below 100 GB.
 - Built-in DepotDownloader runner and auto-extractor from tools/DepotDownloader.
 

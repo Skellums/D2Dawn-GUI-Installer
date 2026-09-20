@@ -88,6 +88,114 @@ function Get-DepotDownloaderPath {
     throw "Could not obtain DepotDownloader.exe. Please download DepotDownloader-windows-x64.zip into tools\DepotDownloader."
 }
 
+function Stop-LingeringDepotDownloader {
+    try {
+        $procs = Get-Process -Name 'DepotDownloader' -ErrorAction SilentlyContinue
+        if ($procs) {
+            Write-Host "[Process Guard] Terminating lingering DepotDownloader process(es)..." -ForegroundColor Yellow
+            foreach ($p in $procs) {
+                try { $p.Kill() } catch {}
+                try { $p.Dispose() } catch {}
+            }
+            Start-Sleep -Milliseconds 600
+        }
+    } catch {}
+}
+
+function Invoke-DepotWithRetry {
+    param(
+        [string]$DepotName,
+        [string]$ExePath,
+        [string[]]$BaseArgs,
+        [int]$MaxRetries = 5,
+        [int]$RetryDelaySec = 5
+    )
+
+    $attempt = 0
+    $success = $false
+
+    while (-not $success -and $attempt -lt $MaxRetries) {
+        $attempt++
+        if ($attempt -gt 1) {
+            Write-Host "`n=======================================================" -ForegroundColor Yellow
+            Write-Host "[Download Recovery] Resuming $DepotName (Attempt $attempt of $MaxRetries)..." -ForegroundColor Yellow
+            Write-Host "=======================================================`n" -ForegroundColor Yellow
+        }
+
+        # Guard: Stop any lingering DepotDownloader process before starting
+        Stop-LingeringDepotDownloader
+
+        # On retry, reuse saved session / username if available to avoid re-prompting QR
+        $currentArgs = @($BaseArgs)
+        if ($attempt -gt 1) {
+            $savedUser = $null
+            if ($SteamUsername) {
+                $savedUser = $SteamUsername
+            } else {
+                try {
+                    $cfgFile = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
+                    if (Test-Path -LiteralPath $cfgFile) {
+                        $cfg = Get-Content -LiteralPath $cfgFile -Raw | ConvertFrom-Json
+                        if ($cfg -and $cfg.PSObject.Properties['LastSteamUser'] -and $cfg.LastSteamUser) {
+                            $savedUser = [string]$cfg.LastSteamUser.Trim()
+                        }
+                    }
+                } catch {}
+            }
+
+            if ($savedUser -and ($currentArgs -contains '-qr')) {
+                $newArgs = New-Object System.Collections.Generic.List[string]
+                for ($idx = 0; $idx -lt $currentArgs.Count; $idx++) {
+                    if ($currentArgs[$idx] -eq '-qr') {
+                        $newArgs.Add('-username')
+                        $newArgs.Add($savedUser)
+                    } else {
+                        $newArgs.Add($currentArgs[$idx])
+                    }
+                }
+                $currentArgs = $newArgs.ToArray()
+            }
+        }
+
+        Write-Host "Running: & DepotDownloader.exe $($currentArgs -join ' ')"
+
+        $proc = $null
+        $exitCode = -1
+        try {
+            $proc = Start-Process -FilePath $ExePath -ArgumentList ($currentArgs -join ' ') -Wait -PassThru -NoNewWindow
+            $exitCode = $proc.ExitCode
+        } catch {
+            Write-Warning "Failed to launch DepotDownloader: $($_.Exception.Message)"
+            $exitCode = -1
+        } finally {
+            if ($proc) {
+                if (-not $proc.HasExited) {
+                    try { $proc.Kill() } catch {}
+                }
+                try { $proc.Dispose() } catch {}
+            }
+        }
+
+        if ($exitCode -eq 0) {
+            $success = $true
+            Write-Host "`n$DepotName completed successfully!" -ForegroundColor Green
+            return
+        }
+
+        Write-Warning "$DepotName exited with code $exitCode."
+
+        if ($attempt -lt $MaxRetries) {
+            Stop-LingeringDepotDownloader
+            Write-Host "Connection interrupted or file conflict occurred. Waiting $RetryDelaySec seconds for file locks to clear before resuming..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $RetryDelaySec
+        }
+    }
+
+    if (-not $success) {
+        throw "$DepotName download failed after $MaxRetries attempts."
+    }
+}
+
 function Invoke-DepotDownload {
     if (-not $Destination) {
         $Destination = (Read-Host 'Destination folder for Destiny 2 build 86657').Trim('"')
@@ -148,12 +256,7 @@ function Invoke-DepotDownload {
             "-dir", "`"$destPath`""
         ) + $authArgs + $platformArgs
 
-        Write-Host "Running: & DepotDownloader.exe $($depot1Args -join ' ')"
-        $proc1 = Start-Process -FilePath $depotDownloaderExe -ArgumentList ($depot1Args -join ' ') -Wait -PassThru -NoNewWindow
-        if ($proc1.ExitCode -ne 0) {
-            throw "Depot 1085661 download failed with exit code $($proc1.ExitCode)."
-        }
-        Write-Host "`nContent Depot (1085661) completed successfully!" -ForegroundColor Green
+        Invoke-DepotWithRetry -DepotName "Content Depot (1085661)" -ExePath $depotDownloaderExe -BaseArgs $depot1Args -MaxRetries 5 -RetryDelaySec 5
     }
 
     # Step 2: Binaries Depot (1085662)
@@ -169,7 +272,22 @@ function Invoke-DepotDownload {
         if ($SteamUsername) {
             $depot2Auth = @("-username", "$SteamUsername", "-remember-password")
         } elseif ($UseQrCode) {
-            $depot2Auth = @("-qr", "-remember-password")
+            $savedUser = $null
+            try {
+                $cfgFile = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
+                if (Test-Path -LiteralPath $cfgFile) {
+                    $cfg = Get-Content -LiteralPath $cfgFile -Raw | ConvertFrom-Json
+                    if ($cfg -and $cfg.PSObject.Properties['LastSteamUser'] -and $cfg.LastSteamUser) {
+                        $savedUser = [string]$cfg.LastSteamUser.Trim()
+                    }
+                }
+            } catch {}
+
+            if ($savedUser) {
+                $depot2Auth = @("-username", "$savedUser", "-remember-password")
+            } else {
+                $depot2Auth = @("-qr", "-remember-password")
+            }
         } else {
             $depot2Auth = @("-remember-password")
         }
@@ -181,12 +299,7 @@ function Invoke-DepotDownload {
             "-dir", "`"$destPath`""
         ) + $depot2Auth + $platformArgs
 
-        Write-Host "Running: & DepotDownloader.exe $($depot2Args -join ' ')"
-        $proc2 = Start-Process -FilePath $depotDownloaderExe -ArgumentList ($depot2Args -join ' ') -Wait -PassThru -NoNewWindow
-        if ($proc2.ExitCode -ne 0) {
-            throw "Depot 1085662 download failed with exit code $($proc2.ExitCode)."
-        }
-        Write-Host "`nBinaries Depot (1085662) completed successfully!" -ForegroundColor Green
+        Invoke-DepotWithRetry -DepotName "Binaries Depot (1085662)" -ExePath $depotDownloaderExe -BaseArgs $depot2Args -MaxRetries 5 -RetryDelaySec 5
     }
 
     # Verification

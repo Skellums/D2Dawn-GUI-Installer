@@ -42,7 +42,7 @@ if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
 # Dawn GUI Installer Version Configuration
 # Update this single variable for new releases; Build and Package scripts read this value.
 # ==============================================================================
-$script:GuiVersion           = '0.0.4'
+$script:GuiVersion           = '0.0.5'
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
 $script:DepotDownloaderUrl   = 'https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-windows-x64.zip'
@@ -2044,9 +2044,16 @@ function Stop-SteamDownloadProcess {
     if ($script:DlProc -and -not $script:DlProc.HasExited) {
         try {
             Stop-Process -Id $script:DlProc.Id -Force -ErrorAction SilentlyContinue
-            Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         } catch {}
     }
+
+    # Guard: unconditionally terminate any lingering DepotDownloader process
+    try {
+        Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | ForEach-Object {
+            try { $_.Kill() } catch {}
+            try { $_.Dispose() } catch {}
+        }
+    } catch {}
 
     if ($panelSteamQr) { $panelSteamQr.Visibility = [System.Windows.Visibility]::Collapsed }
     if ($downloadProgressContainer) { $downloadProgressContainer.Visibility = [System.Windows.Visibility]::Collapsed }
@@ -2096,6 +2103,19 @@ function Start-SteamDownloadProcess {
         [System.Windows.MessageBox]::Show("Please enter your Steam username, or switch to Steam Mobile App QR Code authentication.", "Steam Username Required", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
         return
     }
+
+    # Process Guard: ensure no previous DepotDownloader instance is lingering
+    try {
+        $lingering = Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue
+        if ($lingering) {
+            Log-Message "[Process Guard] Terminating previous DepotDownloader process before starting..."
+            $lingering | ForEach-Object {
+                try { $_.Kill() } catch {}
+                try { $_.Dispose() } catch {}
+            }
+            Start-Sleep -Milliseconds 600
+        }
+    } catch {}
 
     $script:IsRunningDownload = $true
     $script:DlQrLines = New-Object System.Collections.Generic.List[string]
@@ -2162,6 +2182,13 @@ function Start-SteamDownloadProcess {
                     $sender.Stop()
                     $script:DlProc.Dispose()
                     $script:DlProc = $null
+
+                    try {
+                        Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | ForEach-Object {
+                            try { $_.Kill() } catch {}
+                            try { $_.Dispose() } catch {}
+                        }
+                    } catch {}
 
                     $script:IsRunningDownload = $false
                     $btnStartDownload.IsEnabled = $true
@@ -2298,6 +2325,12 @@ function Start-SteamDownloadProcess {
                             if ($line -like '*Connecting to Steam3*') {
                                 $txtDownloadProgressStatus.Text = "Connecting to Steam servers..."
                                 Set-StatusText "Connecting to Steam..."
+                            } elseif ($line -like '*Lost connection to Steam*' -or $line -like '*Reconnecting*') {
+                                $txtDownloadProgressStatus.Text = "Steam connection dropped. Reconnecting..."
+                                Set-StatusText "Reconnecting to Steam CDN..."
+                            } elseif ($line -like '*[Download Recovery]*' -or $line -like '*Waiting * seconds for file locks*') {
+                                $txtDownloadProgressStatus.Text = "Resuming download after connection interruption..."
+                                Set-StatusText "Resuming Steam download..."
                             } elseif ($line -like '*Logging in with QR code*') {
                                 $txtDownloadProgressStatus.Text = "Waiting for Steam Mobile scan..."
                                 Set-StatusText "Waiting for Steam Mobile scan..."
@@ -2363,6 +2396,14 @@ function Start-SteamDownloadProcess {
                     $exitCode = $script:DlProc.ExitCode
                     $script:DlProc.Dispose()
                     $script:DlProc = $null
+
+                    # Guard: ensure no orphaned DepotDownloader processes remain
+                    try {
+                        Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | ForEach-Object {
+                            try { $_.Kill() } catch {}
+                            try { $_.Dispose() } catch {}
+                        }
+                    } catch {}
 
                     $script:IsRunningDownload = $false
                     $btnStartDownload.IsEnabled = $true
@@ -2805,6 +2846,13 @@ $window.add_Closing({
         }
     }
     $procTimer.Stop()
+    # Guard: clean up any active or lingering DepotDownloader process on exit
+    try {
+        Get-Process -Name "DepotDownloader" -ErrorAction SilentlyContinue | ForEach-Object {
+            try { $_.Kill() } catch {}
+            try { $_.Dispose() } catch {}
+        }
+    } catch {}
     if ($script:InstallRunnerScript -and (Test-Path -LiteralPath $script:InstallRunnerScript)) {
         Remove-Item -LiteralPath $script:InstallRunnerScript -Force -ErrorAction SilentlyContinue
     }
