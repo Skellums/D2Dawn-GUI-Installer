@@ -36,8 +36,10 @@ if (-not (Test-Path -LiteralPath $script:DownloadScriptPath)) {
     $tempDl = Join-Path ([System.IO.Path]::GetTempPath()) 'Download-DestinyBuild.ps1'
     if (Test-Path -LiteralPath $tempDl) {
         $script:DownloadScriptPath = $tempDl
-    }
-}
+# ==============================================================================
+# Dawn GUI Installer Version Configuration
+# Update this single variable for new releases; Build and Package scripts read this value.
+# ==============================================================================
 $script:GuiVersion           = '0.0.3'
 $script:ExpectedFileVersion  = '86657.20.08.23.1800.d2_rc'
 $script:SettingsFile         = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'DawnInstaller\settings.json'
@@ -105,7 +107,7 @@ function Find-DepotDownloaderExe {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dawn Installer &amp; Steam Downloader - Destiny 2 (v0.0.3)"
+        Title="Dawn Installer &amp; Steam Downloader - Destiny 2"
         Height="960" Width="1120" MinHeight="660" MinWidth="850"
         WindowStartupLocation="CenterScreen"
         Background="#12151B" Foreground="#E2E8F0"
@@ -806,6 +808,7 @@ $xaml = @'
 # --- Instantiate Window & Controls ---
 $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
 $window = [System.Windows.Markup.XamlReader]::Load($reader)
+$window.Title = "Dawn Installer & Steam Downloader - Destiny 2 (v$script:GuiVersion)"
 
 # Catch unhandled dispatcher exceptions to prevent window termination
 $window.Dispatcher.add_UnhandledException({

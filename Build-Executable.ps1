@@ -16,6 +16,8 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$OutputPath,
 
+    [string]$Version,
+
     [switch]$SkipIcon
 )
 
@@ -110,7 +112,24 @@ if (-not (Get-Command Invoke-ps2exe -ErrorAction SilentlyContinue)) {
 $inputScript = Join-Path $rootDir 'Install-Dawn-GUI.ps1'
 $downloaderScript = Join-Path $rootDir 'Download-DestinyBuild.ps1'
 
-Write-Host "`n[3/3] Compiling $inputScript -> $OutputPath..." -ForegroundColor Yellow
+if (-not $Version) {
+    if (Test-Path -LiteralPath $inputScript) {
+        $guiContent = Get-Content -LiteralPath $inputScript -Raw
+        if ($guiContent -match '\$script:GuiVersion\s*=\s*[''"]([^''"]+)[''"]') {
+            $Version = $matches[1].Trim()
+        }
+    }
+    if (-not $Version) { $Version = '0.0.3' }
+}
+
+$rawVer = $Version.TrimStart('v').Trim()
+$parts = $rawVer.Split('.')
+$quadList = New-Object System.Collections.Generic.List[string]
+foreach ($p in $parts) { $quadList.Add($p) }
+while ($quadList.Count -lt 4) { $quadList.Add('0') }
+$quadVersion = ($quadList[0..3] -join '.')
+
+Write-Host "`n[3/3] Compiling $inputScript -> $OutputPath (v$rawVer / $quadVersion)..." -ForegroundColor Yellow
 
 $ps2exeParams = @{
     inputFile   = $inputScript
@@ -125,7 +144,7 @@ $ps2exeParams = @{
     company     = "Project Sunrise / Dawn Community"
     product     = "Dawn Installer"
     copyright   = "GNU General Public License v3.0"
-    version     = "0.0.3.0"
+    version     = $quadVersion
 }
 
 if ($icoPath -and (Test-Path -LiteralPath $icoPath)) {
